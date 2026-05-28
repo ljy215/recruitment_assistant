@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Conda / env
+.env
+.venv/
+env/
+venv/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Local data
+data/
+*.db
+*.sqlite
+
+# IDE / tooling
+.idea/
+.playwright-mcp/
+ai-recruitment-dashboard.png
+ai-recruitment-echarts-dashboard.png
+console.log
+
+# OS
+Thumbs.db
+.DS_Store
