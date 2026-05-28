@@ -1,4 +1,6 @@
-# AI 招聘提效 Demo
+# recruitment_assistant
+
+AI 招聘提效 Demo：面向 HR 招聘流程的数据自动化记录、面试反馈分析、岗位候选人汇总报告与数据看板。
 
 ## 运行后端
 
