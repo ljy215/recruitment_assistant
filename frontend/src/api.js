@@ -21,6 +21,23 @@ export async function uploadResume(file, position, jobDescription) {
   return request("/api/resumes/upload", { method: "POST", body: form });
 }
 
+export async function listJobs() {
+  return request("/api/jobs");
+}
+
+export async function submitApplication(payload) {
+  const form = new FormData();
+  form.append("resume", payload.resume);
+  form.append("intended_position", payload.intended_position);
+  form.append("name", payload.name || "");
+  form.append("phone", payload.phone || "");
+  form.append("email", payload.email || "");
+  form.append("education", payload.education || "");
+  form.append("school", payload.school || "");
+  form.append("work_years", payload.work_years || "");
+  return request("/api/applications", { method: "POST", body: form });
+}
+
 export async function createCandidate(candidate) {
   return request("/api/candidates", {
     method: "POST",
@@ -29,8 +46,9 @@ export async function createCandidate(candidate) {
   });
 }
 
-export async function listCandidates() {
-  return request("/api/candidates");
+export async function listCandidates(position = "") {
+  const query = position ? `?position=${encodeURIComponent(position)}` : "";
+  return request(`/api/candidates${query}`);
 }
 
 export async function createInterview(payload) {

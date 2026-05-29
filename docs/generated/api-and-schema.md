@@ -5,6 +5,8 @@
 | 接口 | 方法 | 说明 |
 | --- | --- | --- |
 | `/api/resumes/upload` | POST | 上传简历并返回解析结果 |
+| `/api/jobs` | GET | 获取在招岗位列表 |
+| `/api/applications` | POST | 面试者提交申请并创建候选人 |
 | `/api/ai/parse-resume` | POST | 根据文本和岗位 JD 解析候选人 |
 | `/api/candidates` | GET/POST | 查询或新增候选人 |
 | `/api/candidates/{id}` | GET/PATCH | 查看或更新候选人 |

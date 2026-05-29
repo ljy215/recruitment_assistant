@@ -7,9 +7,11 @@ import {
   createInterview,
   dashboardSummary,
   groupCopyMessage,
+  listJobs,
   listCandidates,
   positionReport,
   seedDemoData,
+  submitApplication,
   uploadResume,
 } from "./api";
 import "./styles.css";
@@ -38,12 +40,25 @@ function Chart({ title, data }) {
 }
 
 function App() {
-  const [tab, setTab] = useState("upload");
+  const [tab, setTab] = useState("apply");
   const [candidates, setCandidates] = useState([]);
+  const [jobs, setJobs] = useState([]);
   const [parsed, setParsed] = useState(null);
   const [file, setFile] = useState(null);
+  const [applicationResume, setApplicationResume] = useState(null);
+  const [applicationParsed, setApplicationParsed] = useState(null);
+  const [candidateFilter, setCandidateFilter] = useState("");
   const [position, setPosition] = useState("售前解决方案顾问");
   const [jobDescription, setJobDescription] = useState(DEFAULT_JD);
+  const [application, setApplication] = useState({
+    intended_position: "售前解决方案顾问",
+    name: "",
+    phone: "",
+    email: "",
+    education: "",
+    school: "",
+    work_years: "",
+  });
   const [selectedId, setSelectedId] = useState("");
   const [transcript, setTranscript] = useState("候选人表达清晰，能结合项目经验说明客户需求分析和方案落地过程。技术细节回答较完整。");
   const [score, setScore] = useState(88);
@@ -52,8 +67,8 @@ function App() {
   const [message, setMessage] = useState("");
   const [notice, setNotice] = useState("");
 
-  async function refresh() {
-    const items = await listCandidates();
+  async function refresh(positionOverride = candidateFilter) {
+    const items = await listCandidates(positionOverride);
     setCandidates(items);
     if (items[0] && !items.some((item) => String(item.id) === selectedId)) {
       setSelectedId(String(items[0].id));
@@ -63,8 +78,26 @@ function App() {
   }
 
   useEffect(() => {
-    refresh().catch((error) => setNotice(error.message));
+    listJobs()
+      .then((items) => {
+        setJobs(items);
+        if (items[0]) {
+          setPosition(items[0].name);
+          setJobDescription(items[0].description);
+          setApplication((current) => ({ ...current, intended_position: items[0].name }));
+        }
+      })
+      .then(() => refresh())
+      .catch((error) => setNotice(error.message));
   }, []);
+
+  useEffect(() => {
+    refresh().catch((error) => setNotice(error.message));
+  }, [candidateFilter]);
+
+  function getJobByName(name) {
+    return jobs.find((job) => job.name === name) || jobs[0] || { name, description: DEFAULT_JD };
+  }
 
   async function handleUpload(event) {
     event.preventDefault();
@@ -119,19 +152,132 @@ function App() {
     setNotice("已生成 10 名候选人演示数据和岗位汇总报告");
   }
 
+  async function handleApplicationResume(fileValue) {
+    setApplicationResume(fileValue);
+    setApplicationParsed(null);
+    if (!fileValue) return;
+    const selectedJob = getJobByName(application.intended_position);
+    const result = await uploadResume(fileValue, selectedJob.name, selectedJob.description);
+    setApplicationParsed(result.parsed);
+    setApplication((current) => ({
+      ...current,
+      name: current.name || result.parsed.name,
+      education: current.education || result.parsed.education,
+      school: current.school || result.parsed.school,
+      work_years: current.work_years || result.parsed.work_years,
+    }));
+    setNotice("PDF 简历已解析，请确认申请信息后投递");
+  }
+
+  async function handleApplicationSubmit(event) {
+    event.preventDefault();
+    if (!applicationResume) return setNotice("请上传 PDF 简历");
+    if (!application.name.trim()) return setNotice("请填写姓名");
+    const created = await submitApplication({ ...application, resume: applicationResume });
+    setSelectedId(String(created.id));
+    setCandidateFilter("");
+    await refresh("");
+    setNotice("投递成功，候选人页面已更新");
+    setTab("candidates");
+  }
+
   return (
     <main>
       <aside>
         <h1>AI 招聘提效</h1>
-        {["upload", "candidates", "interview", "dashboard", "report"].map((key) => (
+        {["apply", "upload", "candidates", "interview", "dashboard", "report"].map((key) => (
           <button className={tab === key ? "active" : ""} key={key} onClick={() => setTab(key)}>
-            {({ upload: "简历录入", candidates: "候选人", interview: "面试反馈", dashboard: "数据看板", report: "报告同步" })[key]}
+            {({ apply: "投递申请", upload: "简历录入", candidates: "候选人", interview: "面试反馈", dashboard: "数据看板", report: "报告同步" })[key]}
           </button>
         ))}
       </aside>
 
       <section className="content">
         {notice && <div className="notice">{notice}</div>}
+
+        {tab === "apply" && (
+          <div className="apply-shell">
+            <header className="apply-hero">
+              <div>
+                <p>校园招聘</p>
+                <h2>AI 招聘提效系统申请表</h2>
+                <span>上传 PDF 简历后自动解析，确认申请信息即可投递。</span>
+              </div>
+              <strong>在线投递</strong>
+            </header>
+
+            <form onSubmit={handleApplicationSubmit} className="apply-form">
+              <section>
+                <h3>申请信息</h3>
+                <div className="grid">
+                  <label>
+                    意向岗位
+                    <select
+                      value={application.intended_position}
+                      onChange={(event) => {
+                        const selectedJob = getJobByName(event.target.value);
+                        setApplication((current) => ({ ...current, intended_position: selectedJob.name }));
+                      }}
+                    >
+                      {jobs.map((job) => (
+                        <option value={job.name} key={job.id}>{job.name} - {job.location}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    PDF 简历
+                    <input type="file" accept=".pdf" onChange={(event) => handleApplicationResume(event.target.files?.[0])} />
+                  </label>
+                </div>
+              </section>
+
+              <section>
+                <h3>个人信息</h3>
+                <div className="grid">
+                  <label>
+                    姓名
+                    <input value={application.name} onChange={(event) => setApplication({ ...application, name: event.target.value })} />
+                  </label>
+                  <label>
+                    手机号
+                    <input value={application.phone} onChange={(event) => setApplication({ ...application, phone: event.target.value })} />
+                  </label>
+                  <label>
+                    邮箱
+                    <input value={application.email} onChange={(event) => setApplication({ ...application, email: event.target.value })} />
+                  </label>
+                  <label>
+                    学历
+                    <input value={application.education} onChange={(event) => setApplication({ ...application, education: event.target.value })} />
+                  </label>
+                  <label>
+                    学校
+                    <input value={application.school} onChange={(event) => setApplication({ ...application, school: event.target.value })} />
+                  </label>
+                  <label>
+                    工作年限
+                    <input value={application.work_years} onChange={(event) => setApplication({ ...application, work_years: event.target.value })} />
+                  </label>
+                </div>
+              </section>
+
+              {applicationParsed && (
+                <section>
+                  <h3>简历解析结果</h3>
+                  <div className="parse-card">
+                    <strong>匹配度：{applicationParsed.match_score}</strong>
+                    <span>{applicationParsed.tags.join("、")}</span>
+                    <p>{applicationParsed.summary}</p>
+                  </div>
+                </section>
+              )}
+
+              <footer className="apply-footer">
+                <button type="submit">投递</button>
+              </footer>
+            </form>
+          </div>
+        )}
 
         {tab === "upload" && (
           <div className="panel">
@@ -165,6 +311,15 @@ function App() {
           <div className="panel">
             <h2>候选人列表</h2>
             <div className="actions">
+              <label className="inline-filter">
+                在招岗位
+                <select value={candidateFilter} onChange={(event) => setCandidateFilter(event.target.value)}>
+                  <option value="">全部岗位</option>
+                  {jobs.map((job) => (
+                    <option value={job.name} key={job.id}>{job.name}</option>
+                  ))}
+                </select>
+              </label>
               <button onClick={() => window.open(`${API_ORIGIN}/api/export/candidates`, "_blank")}>
                 导出 CSV
               </button>

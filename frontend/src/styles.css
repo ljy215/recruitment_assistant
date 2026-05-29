@@ -57,6 +57,88 @@ aside button:hover {
   background: #fff;
 }
 
+.apply-shell {
+  width: min(980px, 100%);
+  margin: 0 auto;
+}
+
+.apply-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+  padding: 30px;
+  border-radius: 8px 8px 0 0;
+  color: #fff;
+  background: linear-gradient(135deg, #0f3b74, #1677c8);
+}
+
+.apply-hero p {
+  margin: 0 0 8px;
+  font-size: 14px;
+  opacity: 0.86;
+}
+
+.apply-hero h2 {
+  margin: 0 0 10px;
+  color: #fff;
+  font-size: 26px;
+}
+
+.apply-hero span {
+  color: #dbeafe;
+}
+
+.apply-hero strong {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.apply-form {
+  border: 1px solid #dde5f0;
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: #fff;
+}
+
+.apply-form section {
+  padding: 24px 30px;
+  border-bottom: 1px solid #e8edf5;
+}
+
+.apply-form h3 {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+
+.parse-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d7e4f7;
+  border-radius: 8px;
+  padding: 14px;
+  background: #f8fbff;
+}
+
+.parse-card span {
+  color: #2563eb;
+}
+
+.parse-card p {
+  margin: 0;
+  color: #475467;
+}
+
+.apply-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 20px 30px;
+  background: #fbfcff;
+}
+
 h2 {
   margin: 0 0 18px;
   font-size: 20px;
@@ -155,8 +237,21 @@ tr.selected {
 .actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 12px;
   margin-bottom: 18px;
+}
+
+.inline-filter {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.inline-filter select {
+  min-width: 220px;
 }
 
 .metrics strong {
@@ -196,5 +291,9 @@ tr.selected {
   .grid,
   .charts {
     grid-template-columns: 1fr;
+  }
+
+  .apply-hero {
+    display: grid;
   }
 }

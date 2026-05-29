@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
-from .ai_mock import analyze_interview, extract_resume_info
+from .ai_mock import analyze_interview, extract_resume_info, mask_email, mask_phone
 from .storage import get_conn, init_db, row_to_dict, to_json
 
 
@@ -52,6 +52,31 @@ class GroupMessageRequest(BaseModel):
     next_action: str = "请相关同学确认下一步安排"
 
 
+OPEN_JOBS = [
+    {
+        "id": "presales-consultant",
+        "name": "售前解决方案顾问",
+        "department": "解决方案中心",
+        "location": "杭州",
+        "description": "负责客户沟通、需求分析、方案撰写与项目推进，要求表达清晰、逻辑完整。",
+    },
+    {
+        "id": "frontend-engineer",
+        "name": "前端开发工程师",
+        "department": "数字化平台部",
+        "location": "上海",
+        "description": "负责招聘系统前端页面开发，要求熟悉 React 或 Vue、组件化开发和接口联调。",
+    },
+    {
+        "id": "data-analyst",
+        "name": "数据分析师",
+        "department": "业务运营部",
+        "location": "北京",
+        "description": "负责招聘漏斗、候选人标签和转化效率分析，要求熟悉 SQL、数据看板和业务洞察。",
+    },
+]
+
+
 DEMO_CANDIDATES = [
     ("张三", 88, ["客户沟通", "方案撰写", "项目管理"], "表达清晰，能结合项目说明客户需求分析过程。"),
     ("李四", 84, ["项目经验", "稳定性好", "逻辑清晰"], "逻辑完整，过往项目复杂度较高。"),
@@ -93,6 +118,18 @@ def read_upload_text(file: UploadFile) -> str:
     return raw.decode("utf-8", errors="ignore")
 
 
+def find_job(position: str) -> dict:
+    for job in OPEN_JOBS:
+        if position in {job["id"], job["name"]}:
+            return job
+    return OPEN_JOBS[0]
+
+
+@app.get("/api/jobs")
+async def list_jobs():
+    return OPEN_JOBS
+
+
 @app.post("/api/resumes/upload")
 async def upload_resume(
     file: UploadFile = File(...),
@@ -102,6 +139,38 @@ async def upload_resume(
     text = read_upload_text(file)
     parsed = extract_resume_info(text, position, job_description)
     return {"filename": file.filename, "resume_text": text[:3000], "parsed": parsed}
+
+
+@app.post("/api/applications")
+async def submit_application(
+    resume: UploadFile = File(...),
+    intended_position: str = Form(...),
+    name: str = Form(""),
+    phone: str = Form(""),
+    email: str = Form(""),
+    education: str = Form(""),
+    school: str = Form(""),
+    work_years: str = Form(""),
+):
+    job = find_job(intended_position)
+    text = read_upload_text(resume)
+    parsed = extract_resume_info(text, job["name"], job["description"])
+    candidate = CandidateCreate(
+        name=name.strip() or parsed["name"],
+        position=job["name"],
+        phone_masked=mask_phone(phone) if phone.strip() else parsed["phone_masked"],
+        email_masked=mask_email(email) if email.strip() else parsed["email_masked"],
+        education=education.strip() or parsed["education"],
+        school=school.strip() or parsed["school"],
+        work_years=work_years.strip() or parsed["work_years"],
+        status="已投递",
+        match_score=parsed["match_score"],
+        tags=parsed["tags"],
+        risk_points=parsed["risk_points"],
+        summary=parsed["summary"],
+        screening_suggestion=parsed["screening_suggestion"],
+    )
+    return await create_candidate(candidate)
 
 
 @app.post("/api/ai/parse-resume")
