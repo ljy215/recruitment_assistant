@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
-from .ai_mock import analyze_interview, extract_resume_info, mask_email, mask_phone
+from .ai_mock import analyze_interview, extract_resume_info, mask_email, mask_phone, parse_application_resume
 from .storage import get_conn, init_db, row_to_dict, to_json
 
 
@@ -138,7 +138,13 @@ async def upload_resume(
 ):
     text = read_upload_text(file)
     parsed = extract_resume_info(text, position, job_description)
-    return {"filename": file.filename, "resume_text": text[:3000], "parsed": parsed}
+    application_form = parse_application_resume(text, position, job_description)
+    return {
+        "filename": file.filename,
+        "resume_text": text[:3000],
+        "parsed": parsed,
+        "application_form": application_form,
+    }
 
 
 @app.post("/api/applications")

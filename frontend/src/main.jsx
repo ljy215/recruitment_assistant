@@ -266,6 +266,27 @@ function App() {
     }));
   }
 
+  function isFilled(value) {
+    return value !== undefined && value !== null && String(value).trim() !== "";
+  }
+
+  function mergeWhenEmpty(current, parsedValues = {}) {
+    return Object.fromEntries(
+      Object.entries(parsedValues).map(([key, value]) => [key, isFilled(current[key]) ? current[key] : value])
+    );
+  }
+
+  function normalizeRepeatItems(type, items = []) {
+    const template = EMPTY_REPEAT[type];
+    return items
+      .filter((item) => item && Object.values(item).some(isFilled))
+      .map((item) => ({ ...template, ...item }));
+  }
+
+  function hasRepeatContent(items = []) {
+    return items.some((item) => Object.values(item).some(isFilled));
+  }
+
   async function handleUpload(event) {
     event.preventDefault();
     if (!file) return setNotice("请先选择简历文件");
@@ -325,28 +346,56 @@ function App() {
     if (!fileValue) return;
     const selectedJob = getJobByName(application.intended_position);
     const result = await uploadResume(fileValue, selectedJob.name, selectedJob.description);
+    const applicationForm = result.application_form || {};
+    const parsedApplication = applicationForm.application || {};
+    const parsedRepeats = applicationForm.repeat_forms || {};
     setApplicationParsed(result.parsed);
     setApplication((current) => ({
       ...current,
-      name: current.name || result.parsed.name,
-      education: current.education || result.parsed.education,
-      school: current.school || result.parsed.school,
-      work_years: current.work_years || result.parsed.work_years,
-      major: current.major || "软件工程",
-      english_level: current.english_level || "CET-4",
+      ...mergeWhenEmpty(current, {
+        name: parsedApplication.name || result.parsed.name,
+        phone: parsedApplication.phone,
+        email: parsedApplication.email,
+        gender: parsedApplication.gender,
+        education: parsedApplication.education || result.parsed.education,
+        school: parsedApplication.school || result.parsed.school,
+        work_years: parsedApplication.work_years || result.parsed.work_years,
+        major: parsedApplication.major,
+        english_level: parsedApplication.english_level,
+        self_review: parsedApplication.self_review,
+      }),
     }));
     setRepeatForms((current) => ({
       ...current,
-      education: current.education.map((item, index) => (
-        index === 0
-          ? {
-              ...item,
-              school: item.school || result.parsed.school,
-              degree: item.degree || result.parsed.education,
-              major: item.major || "软件工程",
-            }
-          : item
-      )),
+      education: normalizeRepeatItems("education", parsedRepeats.education).length
+        ? normalizeRepeatItems("education", parsedRepeats.education)
+        : current.education.map((item, index) => (
+            index === 0
+              ? {
+                  ...item,
+                  school: item.school || result.parsed.school,
+                  degree: item.degree || result.parsed.education,
+                }
+              : item
+          )),
+      internship: hasRepeatContent(current.internship)
+        ? current.internship
+        : normalizeRepeatItems("internship", parsedRepeats.internship),
+      project: hasRepeatContent(current.project)
+        ? current.project
+        : normalizeRepeatItems("project", parsedRepeats.project),
+      campus: hasRepeatContent(current.campus)
+        ? current.campus
+        : normalizeRepeatItems("campus", parsedRepeats.campus),
+      certificate: hasRepeatContent(current.certificate)
+        ? current.certificate
+        : normalizeRepeatItems("certificate", parsedRepeats.certificate),
+      language: hasRepeatContent(current.language)
+        ? current.language
+        : normalizeRepeatItems("language", parsedRepeats.language),
+      award: hasRepeatContent(current.award)
+        ? current.award
+        : normalizeRepeatItems("award", parsedRepeats.award),
     }));
     setNotice("PDF 简历已解析，请确认申请信息后投递");
   }
