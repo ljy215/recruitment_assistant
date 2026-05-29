@@ -11,6 +11,7 @@ SECTION_TITLES = {
     "language": ["语言能力", "语言水平"],
     "award": ["获奖经历", "荣誉奖励", "获奖情况"],
     "self": ["自我评价", "自我描述", "个人评价"],
+    "skills": ["相关技能", "专业技能", "技能特长", "技能清单"],
 }
 
 
@@ -35,6 +36,9 @@ def infer_name(text: str) -> str:
     name_match = re.search(r"(?:姓名|候选人)[:：\s]*([\u4e00-\u9fa5]{2,4})", text)
     if name_match:
         return name_match.group(1)
+    first_line_match = re.search(r"^\s*([\u4e00-\u9fa5]{2,4})(?=\s+(?:意向|电话|邮箱|男|女)|\s*$)", normalize_text(text))
+    if first_line_match:
+        return first_line_match.group(1)
     for name in DEFAULT_NAMES:
         if name in text:
             return name
@@ -115,6 +119,13 @@ def infer_company(text: str) -> str:
     return find_first([r"([\u4e00-\u9fa5A-Za-z0-9·（）()]{2,30}(?:公司|集团|科技|有限公司))"], text)
 
 
+def infer_entry_title(entry: str) -> str:
+    first_line = split_lines(entry)[0] if split_lines(entry) else ""
+    title = re.sub(r"^(?:20\d{2}|19\d{2})[./年-]?\s*\d{0,2}\s*(?:-|至|—|~)\s*(?:20\d{2}|19\d{2}|至今)?[./年-]?\s*\d{0,2}\s*", "", first_line)
+    title = re.sub(r"^(?:个人项目|团队项目|项目名称|项目)[:：\s]*", "", title).strip()
+    return title[:40]
+
+
 def parse_education_entries(text: str) -> list[dict]:
     section = get_section(text, "education")
     entries = split_entries(section) or ([section] if section else [])
@@ -140,7 +151,7 @@ def parse_experience_entries(text: str, key: str) -> list[dict]:
     parsed = []
     for entry in entries:
         if key == "project":
-            name = find_first([r"(?:项目名称|项目)[:：\s]*([^\n，,]{2,40})"], entry)
+            name = find_first([r"(?:项目名称)[:：\s]*([^\n，,]{2,40})"], entry) or infer_entry_title(entry)
             role = find_first([r"(?:项目角色|角色|职责)[:：\s]*([^\n，,]{2,30})"], entry)
             parsed.append({**parse_date_range(entry), "name": name, "role": role, "desc": entry[:500]})
         elif key == "campus":
