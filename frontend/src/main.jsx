@@ -32,6 +32,64 @@ const APPLY_SECTIONS = [
   ["extra", "更新说明"],
   ["agreement", "授权文本"],
 ];
+const EMPTY_REPEAT = {
+  education: {
+    startYear: "",
+    startMonth: "",
+    endYear: "",
+    endMonth: "",
+    school: "",
+    major: "",
+    degree: "",
+    type: "",
+    ranking: "",
+    country: "",
+  },
+  internship: {
+    startYear: "",
+    startMonth: "",
+    endYear: "",
+    endMonth: "",
+    company: "",
+    role: "",
+    desc: "",
+  },
+  project: {
+    startYear: "",
+    startMonth: "",
+    endYear: "",
+    endMonth: "",
+    name: "",
+    role: "",
+    desc: "",
+  },
+  campus: {
+    startYear: "",
+    startMonth: "",
+    endYear: "",
+    endMonth: "",
+    role: "",
+    desc: "",
+  },
+  certificate: {
+    date: "",
+    name: "",
+    no: "",
+    org: "",
+  },
+  language: {
+    type: "",
+    listen: "",
+    read: "",
+  },
+  award: {
+    year: "",
+    month: "",
+    name: "",
+    level: "",
+    org: "",
+  },
+};
 
 function Chart({ title, data }) {
   const chartId = useMemo(() => `chart-${Math.random().toString(36).slice(2)}`, []);
@@ -130,6 +188,15 @@ function App() {
     sync_resume: true,
     agreed: false,
   });
+  const [repeatForms, setRepeatForms] = useState({
+    education: [{ ...EMPTY_REPEAT.education }],
+    internship: [{ ...EMPTY_REPEAT.internship }],
+    project: [{ ...EMPTY_REPEAT.project }],
+    campus: [{ ...EMPTY_REPEAT.campus }],
+    certificate: [{ ...EMPTY_REPEAT.certificate }],
+    language: [{ ...EMPTY_REPEAT.language }],
+    award: [{ ...EMPTY_REPEAT.award }],
+  });
   const [selectedId, setSelectedId] = useState("");
   const [transcript, setTranscript] = useState("候选人表达清晰，能结合项目经验说明客户需求分析和方案落地过程。技术细节回答较完整。");
   const [score, setScore] = useState(88);
@@ -172,6 +239,31 @@ function App() {
 
   function updateApplication(key, value) {
     setApplication((current) => ({ ...current, [key]: value }));
+  }
+
+  function addRepeat(type) {
+    setRepeatForms((current) => ({
+      ...current,
+      [type]: [...current[type], { ...EMPTY_REPEAT[type] }],
+    }));
+  }
+
+  function removeRepeat(type, index) {
+    setRepeatForms((current) => {
+      if (current[type].length === 1) {
+        return { ...current, [type]: [{ ...EMPTY_REPEAT[type] }] };
+      }
+      return { ...current, [type]: current[type].filter((_, itemIndex) => itemIndex !== index) };
+    });
+  }
+
+  function updateRepeat(type, index, key, value) {
+    setRepeatForms((current) => ({
+      ...current,
+      [type]: current[type].map((item, itemIndex) => (
+        itemIndex === index ? { ...item, [key]: value } : item
+      )),
+    }));
   }
 
   async function handleUpload(event) {
@@ -242,6 +334,19 @@ function App() {
       work_years: current.work_years || result.parsed.work_years,
       major: current.major || "软件工程",
       english_level: current.english_level || "CET-4",
+    }));
+    setRepeatForms((current) => ({
+      ...current,
+      education: current.education.map((item, index) => (
+        index === 0
+          ? {
+              ...item,
+              school: item.school || result.parsed.school,
+              degree: item.degree || result.parsed.education,
+              major: item.major || "软件工程",
+            }
+          : item
+      )),
     }));
     setNotice("PDF 简历已解析，请确认申请信息后投递");
   }
@@ -344,76 +449,111 @@ function App() {
                   </section>
 
                   <section id="education" className="moka-section">
-                    <div className="section-title"><h3>教育背景</h3><button type="button">+ 添加</button></div>
-                    <div className="form-grid">
-                      <label>就读时间 <em>*</em><div className="date-range"><select value={application.edu_start_year} onChange={(e) => updateApplication("edu_start_year", e.target.value)}><option value="">年</option><option>2019</option><option>2020</option></select><select value={application.edu_start_month} onChange={(e) => updateApplication("edu_start_month", e.target.value)}><option value="">月</option><option>9</option></select><span>-</span><select value={application.edu_end_year} onChange={(e) => updateApplication("edu_end_year", e.target.value)}><option value="">年</option><option>2023</option><option>2027</option></select><select value={application.edu_end_month} onChange={(e) => updateApplication("edu_end_month", e.target.value)}><option value="">月</option><option>6</option><option>7</option></select></div></label>
-                      <label>学校名称 <em>*</em><input value={application.school} onChange={(e) => updateApplication("school", e.target.value)} /></label>
-                      <label>专业名称 <em>*</em><input value={application.major} onChange={(e) => updateApplication("major", e.target.value)} /></label>
-                      <label>学历 <em>*</em><select value={application.education} onChange={(e) => updateApplication("education", e.target.value)}><option value="">请选择</option><option>本科</option><option>硕士</option></select></label>
-                      <label>学历类型 <em>*</em><select value={application.education_type} onChange={(e) => updateApplication("education_type", e.target.value)}><option value="">请选择</option><option>全日制</option><option>非全日制</option></select></label>
-                      <label>成绩排名 <em>*</em><select value={application.ranking} onChange={(e) => updateApplication("ranking", e.target.value)}><option value="">请选择</option><option>前10%</option><option>前30%</option><option>前50%</option></select></label>
-                      <label>学校所在 国家/地区 <em>*</em><select value={application.school_country} onChange={(e) => updateApplication("school_country", e.target.value)}><option value="">请选择</option><option>中国</option><option>海外</option></select></label>
-                    </div>
+                    <div className="section-title"><h3>教育背景</h3><button type="button" onClick={() => addRepeat("education")}>+ 添加</button></div>
+                    {repeatForms.education.map((item, index) => (
+                      <div className="repeat-card" key={`education-${index}`}>
+                        <button className="delete-row" type="button" onClick={() => removeRepeat("education", index)}>删除本条</button>
+                        <div className="form-grid">
+                          <label>就读时间 <em>*</em><div className="date-range"><select value={item.startYear} onChange={(e) => updateRepeat("education", index, "startYear", e.target.value)}><option value="">年</option><option>2019</option><option>2020</option><option>2024</option></select><select value={item.startMonth} onChange={(e) => updateRepeat("education", index, "startMonth", e.target.value)}><option value="">月</option><option>6</option><option>9</option></select><span>-</span><select value={item.endYear} onChange={(e) => updateRepeat("education", index, "endYear", e.target.value)}><option value="">年</option><option>2023</option><option>2027</option></select><select value={item.endMonth} onChange={(e) => updateRepeat("education", index, "endMonth", e.target.value)}><option value="">月</option><option>6</option><option>7</option></select></div></label>
+                          <label>学校名称 <em>*</em><input value={item.school} onChange={(e) => updateRepeat("education", index, "school", e.target.value)} /></label>
+                          <label>专业名称 <em>*</em><input value={item.major} onChange={(e) => updateRepeat("education", index, "major", e.target.value)} /></label>
+                          <label>学历 <em>*</em><select value={item.degree} onChange={(e) => updateRepeat("education", index, "degree", e.target.value)}><option value="">请选择</option><option>本科</option><option>硕士</option></select></label>
+                          <label>学历类型 <em>*</em><select value={item.type} onChange={(e) => updateRepeat("education", index, "type", e.target.value)}><option value="">请选择</option><option>全日制</option><option>非全日制</option></select></label>
+                          <label>成绩排名 <em>*</em><select value={item.ranking} onChange={(e) => updateRepeat("education", index, "ranking", e.target.value)}><option value="">请选择</option><option>前10%</option><option>前30%</option><option>前50%</option></select></label>
+                          <label>学校所在 国家/地区 <em>*</em><select value={item.country} onChange={(e) => updateRepeat("education", index, "country", e.target.value)}><option value="">请选择</option><option>中国</option><option>海外</option></select></label>
+                        </div>
+                      </div>
+                    ))}
                   </section>
 
                   <section id="internship" className="moka-section">
-                    <div className="section-title"><h3>实习经历</h3><button type="button">+ 添加</button></div>
-                    <div className="form-grid">
-                      <label>起止时间<div className="date-range"><select value={application.internship_start_year} onChange={(e) => updateApplication("internship_start_year", e.target.value)}><option value="">年</option></select><select value={application.internship_start_month} onChange={(e) => updateApplication("internship_start_month", e.target.value)}><option value="">月</option></select><span>-</span><select value={application.internship_end_year} onChange={(e) => updateApplication("internship_end_year", e.target.value)}><option value="">年</option></select><select value={application.internship_end_month} onChange={(e) => updateApplication("internship_end_month", e.target.value)}><option value="">月</option></select></div></label>
-                      <label>公司名称<input placeholder="公司名称" value={application.internship_company} onChange={(e) => updateApplication("internship_company", e.target.value)} /></label>
-                      <label>职位名称<input placeholder="职位名称" value={application.internship_role} onChange={(e) => updateApplication("internship_role", e.target.value)} /></label>
-                      <label className="wide-field">工作职责<textarea placeholder="内容" value={application.internship_desc} onChange={(e) => updateApplication("internship_desc", e.target.value)} /></label>
-                    </div>
+                    <div className="section-title"><h3>实习经历</h3><button type="button" onClick={() => addRepeat("internship")}>+ 添加</button></div>
+                    {repeatForms.internship.map((item, index) => (
+                      <div className="repeat-card" key={`internship-${index}`}>
+                        <button className="delete-row" type="button" onClick={() => removeRepeat("internship", index)}>删除本条</button>
+                        <div className="form-grid">
+                          <label>起止时间<div className="date-range"><select value={item.startYear} onChange={(e) => updateRepeat("internship", index, "startYear", e.target.value)}><option value="">年</option><option>2024</option><option>2025</option></select><select value={item.startMonth} onChange={(e) => updateRepeat("internship", index, "startMonth", e.target.value)}><option value="">月</option><option>1</option><option>7</option></select><span>-</span><select value={item.endYear} onChange={(e) => updateRepeat("internship", index, "endYear", e.target.value)}><option value="">年</option><option>2025</option><option>2026</option></select><select value={item.endMonth} onChange={(e) => updateRepeat("internship", index, "endMonth", e.target.value)}><option value="">月</option><option>6</option><option>12</option></select></div></label>
+                          <label>公司名称<input placeholder="公司名称" value={item.company} onChange={(e) => updateRepeat("internship", index, "company", e.target.value)} /></label>
+                          <label>职位名称<input placeholder="职位名称" value={item.role} onChange={(e) => updateRepeat("internship", index, "role", e.target.value)} /></label>
+                          <label className="wide-field">工作职责<textarea placeholder="内容" value={item.desc} onChange={(e) => updateRepeat("internship", index, "desc", e.target.value)} /></label>
+                        </div>
+                      </div>
+                    ))}
                   </section>
 
                   <section id="project" className="moka-section">
-                    <div className="section-title"><h3>项目经历</h3><button type="button">+ 添加</button></div>
-                    <div className="form-grid">
-                      <label>项目时间<div className="date-range"><select value={application.project_start_year} onChange={(e) => updateApplication("project_start_year", e.target.value)}><option value="">年</option></select><select value={application.project_start_month} onChange={(e) => updateApplication("project_start_month", e.target.value)}><option value="">月</option></select><span>-</span><select value={application.project_end_year} onChange={(e) => updateApplication("project_end_year", e.target.value)}><option value="">年</option></select><select value={application.project_end_month} onChange={(e) => updateApplication("project_end_month", e.target.value)}><option value="">月</option></select></div></label>
-                      <label>项目名称<input placeholder="项目名称" value={application.project_name} onChange={(e) => updateApplication("project_name", e.target.value)} /></label>
-                      <label>项目角色<input placeholder="项目角色" value={application.project_role} onChange={(e) => updateApplication("project_role", e.target.value)} /></label>
-                      <label className="wide-field">项目经历信息<textarea placeholder="请填写项目背景、职责、成果等" value={application.project_desc} onChange={(e) => updateApplication("project_desc", e.target.value)} /></label>
-                    </div>
+                    <div className="section-title"><h3>项目经历</h3><button type="button" onClick={() => addRepeat("project")}>+ 添加</button></div>
+                    {repeatForms.project.map((item, index) => (
+                      <div className="repeat-card" key={`project-${index}`}>
+                        <button className="delete-row" type="button" onClick={() => removeRepeat("project", index)}>删除本条</button>
+                        <div className="form-grid">
+                          <label>项目时间<div className="date-range"><select value={item.startYear} onChange={(e) => updateRepeat("project", index, "startYear", e.target.value)}><option value="">年</option><option>2024</option><option>2025</option></select><select value={item.startMonth} onChange={(e) => updateRepeat("project", index, "startMonth", e.target.value)}><option value="">月</option><option>1</option><option>9</option></select><span>-</span><select value={item.endYear} onChange={(e) => updateRepeat("project", index, "endYear", e.target.value)}><option value="">年</option><option>2025</option><option>2026</option></select><select value={item.endMonth} onChange={(e) => updateRepeat("project", index, "endMonth", e.target.value)}><option value="">月</option><option>6</option><option>12</option></select></div></label>
+                          <label>项目名称<input placeholder="项目名称" value={item.name} onChange={(e) => updateRepeat("project", index, "name", e.target.value)} /></label>
+                          <label>项目角色<input placeholder="项目角色" value={item.role} onChange={(e) => updateRepeat("project", index, "role", e.target.value)} /></label>
+                          <label className="wide-field">项目经历信息<textarea placeholder="请填写项目背景、职责、成果等" value={item.desc} onChange={(e) => updateRepeat("project", index, "desc", e.target.value)} /></label>
+                        </div>
+                      </div>
+                    ))}
                   </section>
 
                   <section id="campus" className="moka-section">
-                    <div className="section-title"><h3>校园经历</h3><button type="button">+ 添加</button></div>
-                    <div className="form-grid">
-                      <label>开始时间<div className="split-row"><select value={application.campus_start_year} onChange={(e) => updateApplication("campus_start_year", e.target.value)}><option value="">年</option></select><select value={application.campus_start_month} onChange={(e) => updateApplication("campus_start_month", e.target.value)}><option value="">月</option></select></div></label>
-                      <label>结束时间<div className="split-row"><select value={application.campus_end_year} onChange={(e) => updateApplication("campus_end_year", e.target.value)}><option value="">年</option></select><select value={application.campus_end_month} onChange={(e) => updateApplication("campus_end_month", e.target.value)}><option value="">月</option></select></div></label>
-                      <label>校内任职职务<input placeholder="校内任职职务" value={application.campus_role} onChange={(e) => updateApplication("campus_role", e.target.value)} /></label>
-                      <label className="wide-field">校园经历信息<textarea value={application.campus_desc} onChange={(e) => updateApplication("campus_desc", e.target.value)} /></label>
-                    </div>
-                    <p className="hint">建议不超过4000字</p>
+                    <div className="section-title"><h3>校园经历</h3><button type="button" onClick={() => addRepeat("campus")}>+ 添加</button></div>
+                    {repeatForms.campus.map((item, index) => (
+                      <div className="repeat-card" key={`campus-${index}`}>
+                        <button className="delete-row" type="button" onClick={() => removeRepeat("campus", index)}>删除本条</button>
+                        <div className="form-grid">
+                          <label>开始时间<div className="split-row"><select value={item.startYear} onChange={(e) => updateRepeat("campus", index, "startYear", e.target.value)}><option value="">年</option><option>2023</option><option>2024</option></select><select value={item.startMonth} onChange={(e) => updateRepeat("campus", index, "startMonth", e.target.value)}><option value="">月</option><option>3</option><option>9</option></select></div></label>
+                          <label>结束时间<div className="split-row"><select value={item.endYear} onChange={(e) => updateRepeat("campus", index, "endYear", e.target.value)}><option value="">年</option><option>2025</option><option>2026</option></select><select value={item.endMonth} onChange={(e) => updateRepeat("campus", index, "endMonth", e.target.value)}><option value="">月</option><option>6</option><option>12</option></select></div></label>
+                          <label>校内任职职务<input placeholder="校内任职职务" value={item.role} onChange={(e) => updateRepeat("campus", index, "role", e.target.value)} /></label>
+                          <label className="wide-field">校园经历信息<textarea value={item.desc} onChange={(e) => updateRepeat("campus", index, "desc", e.target.value)} /></label>
+                        </div>
+                        <p className="hint">建议不超过4000字</p>
+                      </div>
+                    ))}
                   </section>
 
                   <section id="certificates" className="moka-section">
-                    <div className="section-title"><h3>技能证书</h3><button type="button">+ 添加</button></div>
-                    <div className="form-grid">
-                      <label>发证日期<input placeholder="日期（年月日）" value={application.certificate_date} onChange={(e) => updateApplication("certificate_date", e.target.value)} /></label>
-                      <label>证书名称<input placeholder="证书名称" value={application.certificate_name} onChange={(e) => updateApplication("certificate_name", e.target.value)} /></label>
-                      <label>证书编号<input placeholder="证书编号" value={application.certificate_no} onChange={(e) => updateApplication("certificate_no", e.target.value)} /></label>
-                      <label>发证机构<input placeholder="发证机构" value={application.certificate_org} onChange={(e) => updateApplication("certificate_org", e.target.value)} /></label>
-                    </div>
+                    <div className="section-title"><h3>技能证书</h3><button type="button" onClick={() => addRepeat("certificate")}>+ 添加</button></div>
+                    {repeatForms.certificate.map((item, index) => (
+                      <div className="repeat-card" key={`certificate-${index}`}>
+                        <button className="delete-row" type="button" onClick={() => removeRepeat("certificate", index)}>删除本条</button>
+                        <div className="form-grid">
+                          <label>发证日期<input placeholder="日期（年月日）" value={item.date} onChange={(e) => updateRepeat("certificate", index, "date", e.target.value)} /></label>
+                          <label>证书名称<input placeholder="证书名称" value={item.name} onChange={(e) => updateRepeat("certificate", index, "name", e.target.value)} /></label>
+                          <label>证书编号<input placeholder="证书编号" value={item.no} onChange={(e) => updateRepeat("certificate", index, "no", e.target.value)} /></label>
+                          <label>发证机构<input placeholder="发证机构" value={item.org} onChange={(e) => updateRepeat("certificate", index, "org", e.target.value)} /></label>
+                        </div>
+                      </div>
+                    ))}
                   </section>
 
                   <section id="language" className="moka-section">
-                    <div className="section-title"><h3>语言能力</h3><button type="button">+ 添加</button></div>
-                    <div className="form-grid">
-                      <label>语言类型<input placeholder="语言类型" value={application.language_type} onChange={(e) => updateApplication("language_type", e.target.value)} /></label>
-                      <label>听说<select value={application.language_listen} onChange={(e) => updateApplication("language_listen", e.target.value)}><option value="">请选择</option><option>一般</option><option>熟练</option><option>精通</option></select></label>
-                      <label>读写<select value={application.language_read} onChange={(e) => updateApplication("language_read", e.target.value)}><option value="">请选择</option><option>一般</option><option>熟练</option><option>精通</option></select></label>
-                    </div>
+                    <div className="section-title"><h3>语言能力</h3><button type="button" onClick={() => addRepeat("language")}>+ 添加</button></div>
+                    {repeatForms.language.map((item, index) => (
+                      <div className="repeat-card" key={`language-${index}`}>
+                        <button className="delete-row" type="button" onClick={() => removeRepeat("language", index)}>删除本条</button>
+                        <div className="form-grid">
+                          <label>语言类型<input placeholder="语言类型" value={item.type} onChange={(e) => updateRepeat("language", index, "type", e.target.value)} /></label>
+                          <label>听说<select value={item.listen} onChange={(e) => updateRepeat("language", index, "listen", e.target.value)}><option value="">请选择</option><option>一般</option><option>熟练</option><option>精通</option></select></label>
+                          <label>读写<select value={item.read} onChange={(e) => updateRepeat("language", index, "read", e.target.value)}><option value="">请选择</option><option>一般</option><option>熟练</option><option>精通</option></select></label>
+                        </div>
+                      </div>
+                    ))}
                   </section>
 
                   <section id="awards" className="moka-section">
-                    <div className="section-title"><h3>获奖经历</h3><button type="button">+ 添加</button></div>
-                    <div className="form-grid">
-                      <label>获奖时间<div className="split-row"><select value={application.award_year} onChange={(e) => updateApplication("award_year", e.target.value)}><option value="">年</option></select><select value={application.award_month} onChange={(e) => updateApplication("award_month", e.target.value)}><option value="">月</option></select></div></label>
-                      <label>奖项名称<input placeholder="奖项名称" value={application.award_name} onChange={(e) => updateApplication("award_name", e.target.value)} /></label>
-                      <label>奖项级别<select value={application.award_level} onChange={(e) => updateApplication("award_level", e.target.value)}><option value="">请选择</option><option>校级</option><option>省级</option><option>国家级</option></select></label>
-                      <label>颁奖单位<input placeholder="颁奖单位" value={application.award_org} onChange={(e) => updateApplication("award_org", e.target.value)} /></label>
-                    </div>
+                    <div className="section-title"><h3>获奖经历</h3><button type="button" onClick={() => addRepeat("award")}>+ 添加</button></div>
+                    {repeatForms.award.map((item, index) => (
+                      <div className="repeat-card" key={`award-${index}`}>
+                        <button className="delete-row" type="button" onClick={() => removeRepeat("award", index)}>删除本条</button>
+                        <div className="form-grid">
+                          <label>获奖时间<div className="split-row"><select value={item.year} onChange={(e) => updateRepeat("award", index, "year", e.target.value)}><option value="">年</option><option>2023</option><option>2024</option></select><select value={item.month} onChange={(e) => updateRepeat("award", index, "month", e.target.value)}><option value="">月</option><option>5</option><option>12</option></select></div></label>
+                          <label>奖项名称<input placeholder="奖项名称" value={item.name} onChange={(e) => updateRepeat("award", index, "name", e.target.value)} /></label>
+                          <label>奖项级别<select value={item.level} onChange={(e) => updateRepeat("award", index, "level", e.target.value)}><option value="">请选择</option><option>校级</option><option>省级</option><option>国家级</option></select></label>
+                          <label>颁奖单位<input placeholder="颁奖单位" value={item.org} onChange={(e) => updateRepeat("award", index, "org", e.target.value)} /></label>
+                        </div>
+                      </div>
+                    ))}
                   </section>
 
                   <section id="self" className="moka-section">

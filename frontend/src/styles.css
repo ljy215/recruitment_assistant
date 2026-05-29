@@ -131,6 +131,33 @@ aside button:hover {
   padding-top: 16px;
 }
 
+.repeat-card {
+  position: relative;
+  margin-top: 12px;
+  padding: 0 0 14px;
+}
+
+.repeat-card + .repeat-card {
+  margin-top: 22px;
+  border-top: 1px dashed #dce3f0;
+  padding-top: 18px;
+}
+
+.delete-row {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  min-width: auto;
+  height: auto;
+  padding: 0;
+  color: #ff4d4f;
+  background: transparent;
+}
+
+.delete-row:hover {
+  color: #d9363e;
+}
+
 .moka-section label {
   color: #17294d;
   font-size: 14px;
