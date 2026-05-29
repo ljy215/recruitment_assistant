@@ -475,13 +475,6 @@ function App() {
                       <span className="upload-name">上传</span>
                     </label>
                     <p className="hint">支持文档、图片、压缩包、视频、音频等格式文件。上传单个文件容量不超过 300 MB。</p>
-                    {applicationParsed && (
-                      <div className="parse-card">
-                        <strong>匹配度：{applicationParsed.match_score}</strong>
-                        <span>{applicationParsed.tags.join("、")}</span>
-                        <p>{applicationParsed.summary}</p>
-                      </div>
-                    )}
                   </section>
 
                   <section id="personal" className="moka-section">
