@@ -190,12 +190,12 @@ function App() {
   });
   const [repeatForms, setRepeatForms] = useState({
     education: [{ ...EMPTY_REPEAT.education }],
-    internship: [{ ...EMPTY_REPEAT.internship }],
-    project: [{ ...EMPTY_REPEAT.project }],
-    campus: [{ ...EMPTY_REPEAT.campus }],
-    certificate: [{ ...EMPTY_REPEAT.certificate }],
-    language: [{ ...EMPTY_REPEAT.language }],
-    award: [{ ...EMPTY_REPEAT.award }],
+    internship: [],
+    project: [],
+    campus: [],
+    certificate: [],
+    language: [],
+    award: [],
   });
   const [selectedId, setSelectedId] = useState("");
   const [transcript, setTranscript] = useState("候选人表达清晰，能结合项目经验说明客户需求分析和方案落地过程。技术细节回答较完整。");
@@ -250,7 +250,7 @@ function App() {
 
   function removeRepeat(type, index) {
     setRepeatForms((current) => {
-      if (current[type].length === 1) {
+      if (type === "education" && current[type].length === 1) {
         return { ...current, [type]: [{ ...EMPTY_REPEAT[type] }] };
       }
       return { ...current, [type]: current[type].filter((_, itemIndex) => itemIndex !== index) };
@@ -355,6 +355,13 @@ function App() {
     event.preventDefault();
     if (!applicationResume) return setNotice("请上传 PDF 简历");
     if (!application.name.trim()) return setNotice("请填写姓名");
+    if (!application.phone.trim()) return setNotice("请填写手机号");
+    if (!application.email.trim()) return setNotice("请填写邮箱");
+    if (!application.intended_city.trim()) return setNotice("请选择意向工作城市");
+    const firstEducation = repeatForms.education[0] || {};
+    if (!firstEducation.school.trim()) return setNotice("请填写教育背景中的学校名称");
+    if (!firstEducation.major.trim()) return setNotice("请填写教育背景中的专业名称");
+    if (!firstEducation.degree.trim()) return setNotice("请选择教育背景中的学历");
     if (!application.agreed) return setNotice("请先阅读并同意隐私协议和招聘隐私政策");
     const created = await submitApplication({ ...application, resume: applicationResume });
     setSelectedId(String(created.id));
@@ -479,6 +486,7 @@ function App() {
                         </div>
                       </div>
                     ))}
+                    {repeatForms.internship.length === 0 && <p className="optional-empty">可选填写，点击“+ 添加”补充实习经历。</p>}
                   </section>
 
                   <section id="project" className="moka-section">
@@ -494,6 +502,7 @@ function App() {
                         </div>
                       </div>
                     ))}
+                    {repeatForms.project.length === 0 && <p className="optional-empty">可选填写，点击“+ 添加”补充项目经历。</p>}
                   </section>
 
                   <section id="campus" className="moka-section">
@@ -510,6 +519,7 @@ function App() {
                         <p className="hint">建议不超过4000字</p>
                       </div>
                     ))}
+                    {repeatForms.campus.length === 0 && <p className="optional-empty">可选填写，点击“+ 添加”补充校园经历。</p>}
                   </section>
 
                   <section id="certificates" className="moka-section">
@@ -525,6 +535,7 @@ function App() {
                         </div>
                       </div>
                     ))}
+                    {repeatForms.certificate.length === 0 && <p className="optional-empty">可选填写，点击“+ 添加”补充技能证书。</p>}
                   </section>
 
                   <section id="language" className="moka-section">
@@ -539,6 +550,7 @@ function App() {
                         </div>
                       </div>
                     ))}
+                    {repeatForms.language.length === 0 && <p className="optional-empty">可选填写，点击“+ 添加”补充语言能力。</p>}
                   </section>
 
                   <section id="awards" className="moka-section">
@@ -554,6 +566,7 @@ function App() {
                         </div>
                       </div>
                     ))}
+                    {repeatForms.award.length === 0 && <p className="optional-empty">可选填写，点击“+ 添加”补充获奖经历。</p>}
                   </section>
 
                   <section id="self" className="moka-section">

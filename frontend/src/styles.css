@@ -158,6 +158,12 @@ aside button:hover {
   color: #d9363e;
 }
 
+.optional-empty {
+  margin: 10px 0 0;
+  color: #9aa4b8;
+  font-size: 13px;
+}
+
 .moka-section label {
   color: #17294d;
   font-size: 14px;
