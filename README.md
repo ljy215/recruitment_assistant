@@ -15,9 +15,9 @@ python -m uvicorn backend.app.main:app --reload
 简历字段抽取使用本地规则；岗位匹配评分、标签和初筛建议通过 Agent 生成。模型配置先留空，未配置时自动使用本地降级 Agent，保证 Demo 可运行。
 
 ```powershell
-$env:RECRUITMENT_LLM_BASE_URL=""
+$env:RECRUITMENT_LLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 $env:RECRUITMENT_LLM_API_KEY=""
-$env:RECRUITMENT_LLM_MODEL=""
+$env:RECRUITMENT_LLM_MODEL="deepseek-v4-flash"
 ```
 
 ## 运行前端

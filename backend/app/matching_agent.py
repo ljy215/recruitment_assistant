@@ -4,9 +4,24 @@ import re
 from typing import Any
 
 
-LLM_BASE_URL = os.getenv("RECRUITMENT_LLM_BASE_URL", "")
+def load_local_env() -> None:
+    env_path = os.path.join(os.getcwd(), ".env")
+    if not os.path.exists(env_path):
+        return
+    with open(env_path, encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+load_local_env()
+
+LLM_BASE_URL = os.getenv("RECRUITMENT_LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 LLM_API_KEY = os.getenv("RECRUITMENT_LLM_API_KEY", "")
-LLM_MODEL = os.getenv("RECRUITMENT_LLM_MODEL", "")
+LLM_MODEL = os.getenv("RECRUITMENT_LLM_MODEL", "deepseek-v4-flash")
 
 SKILL_KEYWORDS = [
     "Python",
