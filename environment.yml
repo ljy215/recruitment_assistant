@@ -9,3 +9,7 @@ dependencies:
   - python-multipart=0.0.20
   - python-docx=1.1.2
   - pypdf=5.1.0
+  - pip
+  - pip:
+      - langchain==0.3.27
+      - langchain-openai==0.3.35

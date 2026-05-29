@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
-from .ai_mock import analyze_interview, extract_resume_info, mask_email, mask_phone, parse_application_resume
+from .ai_mock import analyze_interview, extract_resume_profile, mask_email, mask_phone, parse_application_resume
+from .matching_agent import analyze_candidate_match
 from .storage import get_conn, init_db, row_to_dict, to_json
 
 
@@ -125,6 +126,12 @@ def find_job(position: str) -> dict:
     return OPEN_JOBS[0]
 
 
+def analyze_resume_with_agent(text: str, position: str, job_description: str = "") -> dict:
+    profile = extract_resume_profile(text, position)
+    match_result = analyze_candidate_match(text, position, OPEN_JOBS, job_description)
+    return {**profile, **match_result}
+
+
 @app.get("/api/jobs")
 async def list_jobs():
     return OPEN_JOBS
@@ -137,7 +144,7 @@ async def upload_resume(
     job_description: str = Form(""),
 ):
     text = read_upload_text(file)
-    parsed = extract_resume_info(text, position, job_description)
+    parsed = analyze_resume_with_agent(text, position, job_description)
     application_form = parse_application_resume(text, position, job_description)
     return {
         "filename": file.filename,
@@ -160,7 +167,7 @@ async def submit_application(
 ):
     job = find_job(intended_position)
     text = read_upload_text(resume)
-    parsed = extract_resume_info(text, job["name"], job["description"])
+    parsed = analyze_resume_with_agent(text, job["name"], job["description"])
     candidate = CandidateCreate(
         name=name.strip() or parsed["name"],
         position=job["name"],
@@ -184,7 +191,7 @@ async def parse_resume(payload: dict):
     text = payload.get("resume_text", "")
     position = payload.get("position", "")
     job_description = payload.get("job_description", "")
-    return extract_resume_info(text, position, job_description)
+    return analyze_resume_with_agent(text, position, job_description)
 
 
 @app.post("/api/candidates")

@@ -208,8 +208,36 @@ def parse_awards(text: str) -> list[dict]:
     return [item for item in parsed if item["name"]]
 
 
+def extract_resume_profile(text: str, position: str = "") -> dict:
+    work_years = "待补充"
+    year_match = re.search(r"(\d+)\s*年", text)
+    if year_match:
+        work_years = f"{year_match.group(1)}年"
+
+    education = "待补充"
+    for level in ["博士", "硕士", "本科", "大专"]:
+        if level in text:
+            education = level
+            break
+
+    school = "待补充"
+    school_match = re.search(r"([\u4e00-\u9fa5]{2,20}(?:大学|学院))", text)
+    if school_match:
+        school = school_match.group(1)
+
+    return {
+        "name": infer_name(text),
+        "position": position,
+        "phone_masked": mask_phone(text),
+        "email_masked": mask_email(text),
+        "education": education,
+        "school": school,
+        "work_years": work_years,
+    }
+
+
 def parse_application_resume(text: str, position: str, job_description: str) -> dict:
-    base = extract_resume_info(text, position, job_description)
+    base = extract_resume_profile(text, position)
     plain = normalize_text(text)
     email = find_first([r"([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})"], plain)
     phone = find_first([r"(1[3-9]\d{9})"], plain)
@@ -255,6 +283,7 @@ def parse_application_resume(text: str, position: str, job_description: str) -> 
 
 
 def extract_resume_info(text: str, position: str, job_description: str) -> dict:
+    profile = extract_resume_profile(text, position)
     combined = f"{text}\n{job_description}"
     skills = []
     skill_map = ["Python", "Java", "React", "Vue", "项目管理", "客户沟通", "数据分析", "方案撰写", "销售", "SQL"]
@@ -292,13 +321,7 @@ def extract_resume_info(text: str, position: str, job_description: str) -> dict:
         risk_points.append("暂无明显风险")
 
     return {
-        "name": infer_name(text),
-        "position": position,
-        "phone_masked": mask_phone(text),
-        "email_masked": mask_email(text),
-        "education": education,
-        "school": school,
-        "work_years": work_years,
+        **profile,
         "status": "待初筛",
         "match_score": match_score,
         "tags": tags,
