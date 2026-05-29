@@ -40,7 +40,8 @@ function Chart({ title, data }) {
 }
 
 function App() {
-  const [tab, setTab] = useState("apply");
+  const isApplyEntry = window.location.pathname === "/apply";
+  const [tab, setTab] = useState("candidates");
   const [candidates, setCandidates] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [parsed, setParsed] = useState(null);
@@ -178,24 +179,16 @@ function App() {
     setCandidateFilter("");
     await refresh("");
     setNotice("投递成功，候选人页面已更新");
-    setTab("candidates");
+    setApplicationResume(null);
+    setApplicationParsed(null);
+    setNotice("投递成功，HR 后台候选人页面已更新");
   }
 
-  return (
-    <main>
-      <aside>
-        <h1>AI 招聘提效</h1>
-        {["apply", "upload", "candidates", "interview", "dashboard", "report"].map((key) => (
-          <button className={tab === key ? "active" : ""} key={key} onClick={() => setTab(key)}>
-            {({ apply: "投递申请", upload: "简历录入", candidates: "候选人", interview: "面试反馈", dashboard: "数据看板", report: "报告同步" })[key]}
-          </button>
-        ))}
-      </aside>
-
-      <section className="content">
-        {notice && <div className="notice">{notice}</div>}
-
-        {tab === "apply" && (
+  if (isApplyEntry) {
+    return (
+      <main className="apply-page">
+        <section className="content">
+          {notice && <div className="notice">{notice}</div>}
           <div className="apply-shell">
             <header className="apply-hero">
               <div>
@@ -277,7 +270,25 @@ function App() {
               </footer>
             </form>
           </div>
-        )}
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main>
+      <aside>
+        <h1>AI 招聘提效</h1>
+        {["upload", "candidates", "interview", "dashboard", "report"].map((key) => (
+          <button className={tab === key ? "active" : ""} key={key} onClick={() => setTab(key)}>
+            {({ upload: "简历录入", candidates: "候选人", interview: "面试反馈", dashboard: "数据看板", report: "报告同步" })[key]}
+          </button>
+        ))}
+        <a className="apply-link" href="/apply" target="_blank" rel="noreferrer">打开投递入口</a>
+      </aside>
+
+      <section className="content">
+        {notice && <div className="notice">{notice}</div>}
 
         {tab === "upload" && (
           <div className="panel">
