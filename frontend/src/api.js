@@ -1,5 +1,7 @@
 const API_BASE = "http://127.0.0.1:8000";
 
+export const API_ORIGIN = API_BASE;
+
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, options);
   if (!response.ok) {

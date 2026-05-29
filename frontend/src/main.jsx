@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as echarts from "echarts";
 import {
+  API_ORIGIN,
   createCandidate,
   createInterview,
   dashboardSummary,
@@ -163,6 +164,11 @@ function App() {
         {tab === "candidates" && (
           <div className="panel">
             <h2>候选人列表</h2>
+            <div className="actions">
+              <button onClick={() => window.open(`${API_ORIGIN}/api/export/candidates`, "_blank")}>
+                导出 CSV
+              </button>
+            </div>
             <table>
               <thead>
                 <tr><th>姓名</th><th>岗位</th><th>状态</th><th>评分</th><th>标签</th></tr>

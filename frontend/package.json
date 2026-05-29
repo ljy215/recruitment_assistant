@@ -2,15 +2,17 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "build:esbuild": "node scripts/build-esbuild.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "echarts": "^5.6.0",
+    "esbuild": "^0.21.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.2",
-    "vite": "^5.4.21"
+    "vite": "4.5.14"
   },
   "devDependencies": {}
 }

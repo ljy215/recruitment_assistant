@@ -16,6 +16,13 @@
 | `/api/export/candidates` | GET | 导出候选人 CSV |
 | `/api/demo/seed` | POST | 生成 10 人演示数据 |
 
+## 前端脚本
+
+| 命令 | 说明 |
+| --- | --- |
+| `npm run dev` | 启动 Vite 开发服务 |
+| `npm run build:esbuild` | 使用 esbuild 生成生产产物 |
+
 ## candidates
 
 | 字段 | 说明 |
