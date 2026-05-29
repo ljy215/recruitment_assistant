@@ -17,6 +17,21 @@ import {
 import "./styles.css";
 
 const DEFAULT_JD = "负责客户沟通、需求分析、方案撰写与项目推进，要求表达清晰、逻辑完整。";
+const APPLY_SECTIONS = [
+  ["apply-info", "申请信息"],
+  ["upload", "上传"],
+  ["personal", "个人信息"],
+  ["education", "教育背景"],
+  ["internship", "实习经历"],
+  ["project", "项目经历"],
+  ["campus", "校园经历"],
+  ["certificates", "技能证书"],
+  ["language", "语言能力"],
+  ["awards", "获奖经历"],
+  ["self", "自我描述"],
+  ["extra", "更新说明"],
+  ["agreement", "授权文本"],
+];
 
 function Chart({ title, data }) {
   const chartId = useMemo(() => `chart-${Math.random().toString(36).slice(2)}`, []);
@@ -53,12 +68,67 @@ function App() {
   const [jobDescription, setJobDescription] = useState(DEFAULT_JD);
   const [application, setApplication] = useState({
     intended_position: "售前解决方案顾问",
+    intended_city: "",
     name: "",
+    english_name: "",
     phone: "",
     email: "",
+    id_number: "",
+    gender: "",
+    birth: "",
+    nationality: "",
+    native_place: "",
     education: "",
     school: "",
     work_years: "",
+    graduation_year: "",
+    graduation_month: "",
+    english_level: "",
+    has_family_employee: "",
+    accepts_transfer: "",
+    edu_start_year: "",
+    edu_start_month: "",
+    edu_end_year: "",
+    edu_end_month: "",
+    major: "",
+    education_type: "",
+    ranking: "",
+    school_country: "",
+    internship_start_year: "",
+    internship_start_month: "",
+    internship_end_year: "",
+    internship_end_month: "",
+    internship_company: "",
+    internship_role: "",
+    internship_desc: "",
+    project_start_year: "",
+    project_start_month: "",
+    project_end_year: "",
+    project_end_month: "",
+    project_name: "",
+    project_role: "",
+    project_desc: "",
+    campus_start_year: "",
+    campus_start_month: "",
+    campus_end_year: "",
+    campus_end_month: "",
+    campus_role: "",
+    campus_desc: "",
+    certificate_date: "",
+    certificate_name: "",
+    certificate_no: "",
+    certificate_org: "",
+    language_type: "",
+    language_listen: "",
+    language_read: "",
+    award_year: "",
+    award_month: "",
+    award_name: "",
+    award_level: "",
+    award_org: "",
+    self_review: "",
+    sync_resume: true,
+    agreed: false,
   });
   const [selectedId, setSelectedId] = useState("");
   const [transcript, setTranscript] = useState("候选人表达清晰，能结合项目经验说明客户需求分析和方案落地过程。技术细节回答较完整。");
@@ -98,6 +168,10 @@ function App() {
 
   function getJobByName(name) {
     return jobs.find((job) => job.name === name) || jobs[0] || { name, description: DEFAULT_JD };
+  }
+
+  function updateApplication(key, value) {
+    setApplication((current) => ({ ...current, [key]: value }));
   }
 
   async function handleUpload(event) {
@@ -166,6 +240,8 @@ function App() {
       education: current.education || result.parsed.education,
       school: current.school || result.parsed.school,
       work_years: current.work_years || result.parsed.work_years,
+      major: current.major || "软件工程",
+      english_level: current.english_level || "CET-4",
     }));
     setNotice("PDF 简历已解析，请确认申请信息后投递");
   }
@@ -174,6 +250,7 @@ function App() {
     event.preventDefault();
     if (!applicationResume) return setNotice("请上传 PDF 简历");
     if (!application.name.trim()) return setNotice("请填写姓名");
+    if (!application.agreed) return setNotice("请先阅读并同意隐私协议和招聘隐私政策");
     const created = await submitApplication({ ...application, resume: applicationResume });
     setSelectedId(String(created.id));
     setCandidateFilter("");
@@ -190,84 +267,182 @@ function App() {
         <section className="content">
           {notice && <div className="notice">{notice}</div>}
           <div className="apply-shell">
-            <header className="apply-hero">
-              <div>
-                <p>校园招聘</p>
-                <h2>AI 招聘提效系统申请表</h2>
-                <span>上传 PDF 简历后自动解析，确认申请信息即可投递。</span>
+            <form onSubmit={handleApplicationSubmit} className="apply-form moka-form">
+              <div className="apply-main">
+                <div className="form-column">
+                  <section id="apply-info" className="moka-section">
+                    <h3>申请信息</h3>
+                    <div className="form-grid">
+                      <label>
+                        意向岗位 <em>*</em>
+                        <select
+                          value={application.intended_position}
+                          onChange={(event) => {
+                            const selectedJob = getJobByName(event.target.value);
+                            setApplication((current) => ({ ...current, intended_position: selectedJob.name }));
+                          }}
+                        >
+                          {jobs.map((job) => (
+                            <option value={job.name} key={job.id}>{job.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        意向工作城市 <em>*</em>
+                        <select value={application.intended_city} onChange={(event) => updateApplication("intended_city", event.target.value)}>
+                          <option value="">选择意向工作城市</option>
+                          <option>杭州</option>
+                          <option>上海</option>
+                          <option>北京</option>
+                          <option>重庆</option>
+                        </select>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section id="upload" className="moka-section">
+                    <h3>上传</h3>
+                    <label className="upload-block">
+                      上传简历 <em>*</em>
+                      <input type="file" accept=".pdf" onChange={(event) => handleApplicationResume(event.target.files?.[0])} />
+                      <span className="upload-name">{applicationResume?.name || "请选择 PDF 简历"}</span>
+                    </label>
+                    <p className="hint">支持 pdf 格式。上传附件后，会自动解析、填充申请表信息。</p>
+                    <label className="upload-block muted">
+                      上传附件
+                      <input type="file" />
+                      <span className="upload-name">上传</span>
+                    </label>
+                    <p className="hint">支持文档、图片、压缩包、视频、音频等格式文件。上传单个文件容量不超过 300 MB。</p>
+                    {applicationParsed && (
+                      <div className="parse-card">
+                        <strong>匹配度：{applicationParsed.match_score}</strong>
+                        <span>{applicationParsed.tags.join("、")}</span>
+                        <p>{applicationParsed.summary}</p>
+                      </div>
+                    )}
+                  </section>
+
+                  <section id="personal" className="moka-section">
+                    <h3>个人信息</h3>
+                    <div className="form-grid">
+                      <label>姓名 <em>*</em><input value={application.name} onChange={(e) => updateApplication("name", e.target.value)} /></label>
+                      <label>英文名<input placeholder="英文名" value={application.english_name} onChange={(e) => updateApplication("english_name", e.target.value)} /></label>
+                      <label className="phone-row">手机号码 <em>*</em><div className="phone-input"><select defaultValue="+86"><option>+86</option></select><input value={application.phone} onChange={(e) => updateApplication("phone", e.target.value)} /></div></label>
+                      <label>邮箱 <em>*</em><input value={application.email} onChange={(e) => updateApplication("email", e.target.value)} /></label>
+                      <label>证件号码 <em>*</em><input placeholder="身份证" value={application.id_number} onChange={(e) => updateApplication("id_number", e.target.value)} /></label>
+                      <label>性别 <em>*</em><select value={application.gender} onChange={(e) => updateApplication("gender", e.target.value)}><option value="">请选择</option><option>男</option><option>女</option></select></label>
+                      <label>出生日期（年龄）<input placeholder="2000-02（26岁）" value={application.birth} onChange={(e) => updateApplication("birth", e.target.value)} /></label>
+                      <label>国家/地区<input placeholder="请输入国家/地区" value={application.nationality} onChange={(e) => updateApplication("nationality", e.target.value)} /></label>
+                      <label>籍贯<select value={application.native_place} onChange={(e) => updateApplication("native_place", e.target.value)}><option value="">请输入籍贯</option><option>中国</option></select></label>
+                      <label>最高学历 <em>*</em><select value={application.education} onChange={(e) => updateApplication("education", e.target.value)}><option value="">请选择</option><option>大专</option><option>本科</option><option>硕士</option><option>博士</option></select></label>
+                      <label>毕业时间 <em>*</em><div className="split-row"><select value={application.graduation_year} onChange={(e) => updateApplication("graduation_year", e.target.value)}><option value="">年</option><option>2026</option><option>2027</option></select><select value={application.graduation_month} onChange={(e) => updateApplication("graduation_month", e.target.value)}><option value="">月</option><option>6</option><option>7</option></select></div></label>
+                      <label>英语水平 <em>*</em><select value={application.english_level} onChange={(e) => updateApplication("english_level", e.target.value)}><option value="">请选择</option><option>CET-4</option><option>CET-6</option><option>IELTS</option><option>TOEFL</option></select></label>
+                      <label>是否有亲属在吉利控股集团任职 <em>*</em><select value={application.has_family_employee} onChange={(e) => updateApplication("has_family_employee", e.target.value)}><option value="">请选择</option><option>否</option><option>是</option></select></label>
+                      <label>是否服从调配<select value={application.accepts_transfer} onChange={(e) => updateApplication("accepts_transfer", e.target.value)}><option value="">请选择</option><option>是</option><option>否</option></select></label>
+                    </div>
+                  </section>
+
+                  <section id="education" className="moka-section">
+                    <div className="section-title"><h3>教育背景</h3><button type="button">+ 添加</button></div>
+                    <div className="form-grid">
+                      <label>就读时间 <em>*</em><div className="date-range"><select value={application.edu_start_year} onChange={(e) => updateApplication("edu_start_year", e.target.value)}><option value="">年</option><option>2019</option><option>2020</option></select><select value={application.edu_start_month} onChange={(e) => updateApplication("edu_start_month", e.target.value)}><option value="">月</option><option>9</option></select><span>-</span><select value={application.edu_end_year} onChange={(e) => updateApplication("edu_end_year", e.target.value)}><option value="">年</option><option>2023</option><option>2027</option></select><select value={application.edu_end_month} onChange={(e) => updateApplication("edu_end_month", e.target.value)}><option value="">月</option><option>6</option><option>7</option></select></div></label>
+                      <label>学校名称 <em>*</em><input value={application.school} onChange={(e) => updateApplication("school", e.target.value)} /></label>
+                      <label>专业名称 <em>*</em><input value={application.major} onChange={(e) => updateApplication("major", e.target.value)} /></label>
+                      <label>学历 <em>*</em><select value={application.education} onChange={(e) => updateApplication("education", e.target.value)}><option value="">请选择</option><option>本科</option><option>硕士</option></select></label>
+                      <label>学历类型 <em>*</em><select value={application.education_type} onChange={(e) => updateApplication("education_type", e.target.value)}><option value="">请选择</option><option>全日制</option><option>非全日制</option></select></label>
+                      <label>成绩排名 <em>*</em><select value={application.ranking} onChange={(e) => updateApplication("ranking", e.target.value)}><option value="">请选择</option><option>前10%</option><option>前30%</option><option>前50%</option></select></label>
+                      <label>学校所在 国家/地区 <em>*</em><select value={application.school_country} onChange={(e) => updateApplication("school_country", e.target.value)}><option value="">请选择</option><option>中国</option><option>海外</option></select></label>
+                    </div>
+                  </section>
+
+                  <section id="internship" className="moka-section">
+                    <div className="section-title"><h3>实习经历</h3><button type="button">+ 添加</button></div>
+                    <div className="form-grid">
+                      <label>起止时间<div className="date-range"><select value={application.internship_start_year} onChange={(e) => updateApplication("internship_start_year", e.target.value)}><option value="">年</option></select><select value={application.internship_start_month} onChange={(e) => updateApplication("internship_start_month", e.target.value)}><option value="">月</option></select><span>-</span><select value={application.internship_end_year} onChange={(e) => updateApplication("internship_end_year", e.target.value)}><option value="">年</option></select><select value={application.internship_end_month} onChange={(e) => updateApplication("internship_end_month", e.target.value)}><option value="">月</option></select></div></label>
+                      <label>公司名称<input placeholder="公司名称" value={application.internship_company} onChange={(e) => updateApplication("internship_company", e.target.value)} /></label>
+                      <label>职位名称<input placeholder="职位名称" value={application.internship_role} onChange={(e) => updateApplication("internship_role", e.target.value)} /></label>
+                      <label className="wide-field">工作职责<textarea placeholder="内容" value={application.internship_desc} onChange={(e) => updateApplication("internship_desc", e.target.value)} /></label>
+                    </div>
+                  </section>
+
+                  <section id="project" className="moka-section">
+                    <div className="section-title"><h3>项目经历</h3><button type="button">+ 添加</button></div>
+                    <div className="form-grid">
+                      <label>项目时间<div className="date-range"><select value={application.project_start_year} onChange={(e) => updateApplication("project_start_year", e.target.value)}><option value="">年</option></select><select value={application.project_start_month} onChange={(e) => updateApplication("project_start_month", e.target.value)}><option value="">月</option></select><span>-</span><select value={application.project_end_year} onChange={(e) => updateApplication("project_end_year", e.target.value)}><option value="">年</option></select><select value={application.project_end_month} onChange={(e) => updateApplication("project_end_month", e.target.value)}><option value="">月</option></select></div></label>
+                      <label>项目名称<input placeholder="项目名称" value={application.project_name} onChange={(e) => updateApplication("project_name", e.target.value)} /></label>
+                      <label>项目角色<input placeholder="项目角色" value={application.project_role} onChange={(e) => updateApplication("project_role", e.target.value)} /></label>
+                      <label className="wide-field">项目经历信息<textarea placeholder="请填写项目背景、职责、成果等" value={application.project_desc} onChange={(e) => updateApplication("project_desc", e.target.value)} /></label>
+                    </div>
+                  </section>
+
+                  <section id="campus" className="moka-section">
+                    <div className="section-title"><h3>校园经历</h3><button type="button">+ 添加</button></div>
+                    <div className="form-grid">
+                      <label>开始时间<div className="split-row"><select value={application.campus_start_year} onChange={(e) => updateApplication("campus_start_year", e.target.value)}><option value="">年</option></select><select value={application.campus_start_month} onChange={(e) => updateApplication("campus_start_month", e.target.value)}><option value="">月</option></select></div></label>
+                      <label>结束时间<div className="split-row"><select value={application.campus_end_year} onChange={(e) => updateApplication("campus_end_year", e.target.value)}><option value="">年</option></select><select value={application.campus_end_month} onChange={(e) => updateApplication("campus_end_month", e.target.value)}><option value="">月</option></select></div></label>
+                      <label>校内任职职务<input placeholder="校内任职职务" value={application.campus_role} onChange={(e) => updateApplication("campus_role", e.target.value)} /></label>
+                      <label className="wide-field">校园经历信息<textarea value={application.campus_desc} onChange={(e) => updateApplication("campus_desc", e.target.value)} /></label>
+                    </div>
+                    <p className="hint">建议不超过4000字</p>
+                  </section>
+
+                  <section id="certificates" className="moka-section">
+                    <div className="section-title"><h3>技能证书</h3><button type="button">+ 添加</button></div>
+                    <div className="form-grid">
+                      <label>发证日期<input placeholder="日期（年月日）" value={application.certificate_date} onChange={(e) => updateApplication("certificate_date", e.target.value)} /></label>
+                      <label>证书名称<input placeholder="证书名称" value={application.certificate_name} onChange={(e) => updateApplication("certificate_name", e.target.value)} /></label>
+                      <label>证书编号<input placeholder="证书编号" value={application.certificate_no} onChange={(e) => updateApplication("certificate_no", e.target.value)} /></label>
+                      <label>发证机构<input placeholder="发证机构" value={application.certificate_org} onChange={(e) => updateApplication("certificate_org", e.target.value)} /></label>
+                    </div>
+                  </section>
+
+                  <section id="language" className="moka-section">
+                    <div className="section-title"><h3>语言能力</h3><button type="button">+ 添加</button></div>
+                    <div className="form-grid">
+                      <label>语言类型<input placeholder="语言类型" value={application.language_type} onChange={(e) => updateApplication("language_type", e.target.value)} /></label>
+                      <label>听说<select value={application.language_listen} onChange={(e) => updateApplication("language_listen", e.target.value)}><option value="">请选择</option><option>一般</option><option>熟练</option><option>精通</option></select></label>
+                      <label>读写<select value={application.language_read} onChange={(e) => updateApplication("language_read", e.target.value)}><option value="">请选择</option><option>一般</option><option>熟练</option><option>精通</option></select></label>
+                    </div>
+                  </section>
+
+                  <section id="awards" className="moka-section">
+                    <div className="section-title"><h3>获奖经历</h3><button type="button">+ 添加</button></div>
+                    <div className="form-grid">
+                      <label>获奖时间<div className="split-row"><select value={application.award_year} onChange={(e) => updateApplication("award_year", e.target.value)}><option value="">年</option></select><select value={application.award_month} onChange={(e) => updateApplication("award_month", e.target.value)}><option value="">月</option></select></div></label>
+                      <label>奖项名称<input placeholder="奖项名称" value={application.award_name} onChange={(e) => updateApplication("award_name", e.target.value)} /></label>
+                      <label>奖项级别<select value={application.award_level} onChange={(e) => updateApplication("award_level", e.target.value)}><option value="">请选择</option><option>校级</option><option>省级</option><option>国家级</option></select></label>
+                      <label>颁奖单位<input placeholder="颁奖单位" value={application.award_org} onChange={(e) => updateApplication("award_org", e.target.value)} /></label>
+                    </div>
+                  </section>
+
+                  <section id="self" className="moka-section">
+                    <h3>自我描述</h3>
+                    <label className="wide-field">自我评价<textarea value={application.self_review} onChange={(e) => updateApplication("self_review", e.target.value)} /></label>
+                    <p className="hint">建议不超过1000字</p>
+                  </section>
+
+                  <section id="extra" className="moka-section">
+                    <h3>更新说明</h3>
+                    <label className="check-line"><input type="checkbox" checked={application.sync_resume} onChange={(e) => updateApplication("sync_resume", e.target.checked)} /> 同步更新在线简历</label>
+                  </section>
+
+                  <section id="agreement" className="moka-section">
+                    <h3>授权文本</h3>
+                    <label className="check-line"><input type="checkbox" checked={application.agreed} onChange={(e) => updateApplication("agreed", e.target.checked)} /> 我已阅读并同意《隐私协议》和《招聘隐私政策》</label>
+                  </section>
+
+                  <footer className="apply-footer">
+                    <button type="submit">投递</button>
+                  </footer>
+                </div>
+
+                <nav className="apply-toc">
+                  {APPLY_SECTIONS.map(([id, label], index) => (
+                    <a href={`#${id}`} className={index === 0 ? "active" : ""} key={id}>{label}</a>
+                  ))}
+                </nav>
               </div>
-              <strong>在线投递</strong>
-            </header>
-
-            <form onSubmit={handleApplicationSubmit} className="apply-form">
-              <section>
-                <h3>申请信息</h3>
-                <div className="grid">
-                  <label>
-                    意向岗位
-                    <select
-                      value={application.intended_position}
-                      onChange={(event) => {
-                        const selectedJob = getJobByName(event.target.value);
-                        setApplication((current) => ({ ...current, intended_position: selectedJob.name }));
-                      }}
-                    >
-                      {jobs.map((job) => (
-                        <option value={job.name} key={job.id}>{job.name} - {job.location}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    PDF 简历
-                    <input type="file" accept=".pdf" onChange={(event) => handleApplicationResume(event.target.files?.[0])} />
-                  </label>
-                </div>
-              </section>
-
-              <section>
-                <h3>个人信息</h3>
-                <div className="grid">
-                  <label>
-                    姓名
-                    <input value={application.name} onChange={(event) => setApplication({ ...application, name: event.target.value })} />
-                  </label>
-                  <label>
-                    手机号
-                    <input value={application.phone} onChange={(event) => setApplication({ ...application, phone: event.target.value })} />
-                  </label>
-                  <label>
-                    邮箱
-                    <input value={application.email} onChange={(event) => setApplication({ ...application, email: event.target.value })} />
-                  </label>
-                  <label>
-                    学历
-                    <input value={application.education} onChange={(event) => setApplication({ ...application, education: event.target.value })} />
-                  </label>
-                  <label>
-                    学校
-                    <input value={application.school} onChange={(event) => setApplication({ ...application, school: event.target.value })} />
-                  </label>
-                  <label>
-                    工作年限
-                    <input value={application.work_years} onChange={(event) => setApplication({ ...application, work_years: event.target.value })} />
-                  </label>
-                </div>
-              </section>
-
-              {applicationParsed && (
-                <section>
-                  <h3>简历解析结果</h3>
-                  <div className="parse-card">
-                    <strong>匹配度：{applicationParsed.match_score}</strong>
-                    <span>{applicationParsed.tags.join("、")}</span>
-                    <p>{applicationParsed.summary}</p>
-                  </div>
-                </section>
-              )}
-
-              <footer className="apply-footer">
-                <button type="submit">投递</button>
-              </footer>
             </form>
           </div>
         </section>
@@ -284,7 +459,6 @@ function App() {
             {({ upload: "简历录入", candidates: "候选人", interview: "面试反馈", dashboard: "数据看板", report: "报告同步" })[key]}
           </button>
         ))}
-        <a className="apply-link" href="/apply" target="_blank" rel="noreferrer">打开投递入口</a>
       </aside>
 
       <section className="content">
