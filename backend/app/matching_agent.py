@@ -94,7 +94,15 @@ def normalize_agent_result(payload: dict[str, Any], position: str) -> dict[str, 
 def local_match_agent(resume_text: str, position: str, jobs: list[dict[str, Any]], job_description: str = "") -> dict[str, Any]:
     job = find_job_knowledge(position, jobs, job_description)
     candidate = extract_candidate_signals(resume_text)
-    combined_job = f"{job.get('name', '')}\n{job.get('description', '')}\n{job_description}"
+    combined_job = "\n".join(
+        [
+            job.get("name", ""),
+            job.get("description", ""),
+            job.get("responsibilities", ""),
+            job.get("requirements", ""),
+            job_description,
+        ]
+    )
     matched_skills = [skill for skill in candidate["skills"] if skill.lower() in combined_job.lower()]
     useful_skills = matched_skills or candidate["skills"][:4]
 

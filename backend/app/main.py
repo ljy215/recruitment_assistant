@@ -1,5 +1,7 @@
 import csv
+import hashlib
 import io
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -53,27 +55,46 @@ class GroupMessageRequest(BaseModel):
     next_action: str = "请相关同学确认下一步安排"
 
 
-OPEN_JOBS = [
+class JobCreate(BaseModel):
+    name: str
+    department: str = ""
+    location: str = ""
+    description: str = ""
+    responsibilities: str = ""
+    requirements: str = ""
+    status: str = "招聘中"
+
+
+DEFAULT_JOBS = [
     {
         "id": "presales-consultant",
         "name": "售前解决方案顾问",
         "department": "解决方案中心",
         "location": "杭州",
-        "description": "负责客户沟通、需求分析、方案撰写与项目推进，要求表达清晰、逻辑完整。",
+        "description": "面向客户需求提供售前解决方案支持。",
+        "responsibilities": "负责客户沟通、需求分析、方案撰写与项目推进。",
+        "requirements": "要求表达清晰、逻辑完整，具备客户意识和项目协同能力。",
+        "status": "招聘中",
     },
     {
         "id": "frontend-engineer",
         "name": "前端开发工程师",
         "department": "数字化平台部",
         "location": "上海",
-        "description": "负责招聘系统前端页面开发，要求熟悉 React 或 Vue、组件化开发和接口联调。",
+        "description": "负责招聘系统和内部数字化平台前端研发。",
+        "responsibilities": "负责前端页面开发、组件抽象、接口联调和用户体验优化。",
+        "requirements": "要求熟悉 React 或 Vue、组件化开发、工程化构建和接口联调。",
+        "status": "招聘中",
     },
     {
         "id": "data-analyst",
         "name": "数据分析师",
         "department": "业务运营部",
         "location": "北京",
-        "description": "负责招聘漏斗、候选人标签和转化效率分析，要求熟悉 SQL、数据看板和业务洞察。",
+        "description": "负责招聘运营数据分析和业务洞察。",
+        "responsibilities": "负责招聘漏斗、候选人标签、转化效率分析和看板建设。",
+        "requirements": "要求熟悉 SQL、数据看板、指标拆解和业务洞察。",
+        "status": "招聘中",
     },
 ]
 
@@ -95,6 +116,7 @@ DEMO_CANDIDATES = [
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    seed_default_jobs()
 
 
 def read_upload_text(file: UploadFile) -> str:
@@ -120,21 +142,99 @@ def read_upload_text(file: UploadFile) -> str:
 
 
 def find_job(position: str) -> dict:
-    for job in OPEN_JOBS:
+    jobs = list_jobs_from_db(include_closed=True)
+    for job in jobs:
         if position in {job["id"], job["name"]}:
             return job
-    return OPEN_JOBS[0]
+    return jobs[0] if jobs else DEFAULT_JOBS[0]
+
+
+def slugify_job_id(name: str) -> str:
+    base = re.sub(r"[^0-9A-Za-z]+", "-", name).strip("-").lower()
+    if len(base) < 3:
+        base = f"job-{hashlib.sha1(name.encode('utf-8')).hexdigest()[:8]}"
+    candidate = base
+    index = 2
+    with get_conn() as conn:
+        while conn.execute("SELECT 1 FROM jobs WHERE id = ?", (candidate,)).fetchone():
+            candidate = f"{base}-{index}"
+            index += 1
+    return candidate
+
+
+def seed_default_jobs() -> None:
+    with get_conn() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+        if count:
+            return
+        for job in DEFAULT_JOBS:
+            conn.execute(
+                """
+                INSERT INTO jobs (
+                    id, name, department, location, description, responsibilities, requirements, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    job["id"],
+                    job["name"],
+                    job["department"],
+                    job["location"],
+                    job["description"],
+                    job["responsibilities"],
+                    job["requirements"],
+                    job["status"],
+                ),
+            )
+
+
+def list_jobs_from_db(include_closed: bool = False) -> list[dict]:
+    query = "SELECT * FROM jobs"
+    params = []
+    if not include_closed:
+        query += " WHERE status = ?"
+        params.append("招聘中")
+    query += " ORDER BY updated_at DESC, created_at DESC"
+    with get_conn() as conn:
+        return [row_to_dict(row) for row in conn.execute(query, params).fetchall()]
 
 
 def analyze_resume_with_agent(text: str, position: str, job_description: str = "") -> dict:
     profile = extract_resume_profile(text, position)
-    match_result = analyze_candidate_match(text, position, OPEN_JOBS, job_description)
+    jobs = list_jobs_from_db(include_closed=True)
+    match_result = analyze_candidate_match(text, position, jobs, job_description)
     return {**profile, **match_result}
 
 
 @app.get("/api/jobs")
 async def list_jobs():
-    return OPEN_JOBS
+    return list_jobs_from_db()
+
+
+@app.post("/api/jobs")
+async def create_job(payload: JobCreate):
+    if not payload.name.strip():
+        raise HTTPException(status_code=400, detail="job name is required")
+    job_id = slugify_job_id(payload.name)
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO jobs (
+                id, name, department, location, description, responsibilities, requirements, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                job_id,
+                payload.name.strip(),
+                payload.department.strip(),
+                payload.location.strip(),
+                payload.description.strip(),
+                payload.responsibilities.strip(),
+                payload.requirements.strip(),
+                payload.status.strip() or "招聘中",
+            ),
+        )
+        row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return row_to_dict(row)
 
 
 @app.post("/api/resumes/upload")

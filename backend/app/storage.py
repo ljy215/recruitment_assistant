@@ -54,6 +54,19 @@ def init_db() -> None:
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(candidate_id) REFERENCES candidates(id)
             );
+
+            CREATE TABLE IF NOT EXISTS jobs (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                department TEXT,
+                location TEXT,
+                description TEXT,
+                responsibilities TEXT,
+                requirements TEXT,
+                status TEXT NOT NULL DEFAULT '招聘中',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
             """
         )
 

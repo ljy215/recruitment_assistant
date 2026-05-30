@@ -3,8 +3,8 @@ import { createRoot } from "react-dom/client";
 import * as echarts from "echarts";
 import {
   API_ORIGIN,
-  createCandidate,
   createInterview,
+  createJob,
   dashboardSummary,
   groupCopyMessage,
   listJobs,
@@ -114,16 +114,20 @@ function Chart({ title, data }) {
 
 function App() {
   const isApplyEntry = window.location.pathname === "/apply";
-  const [tab, setTab] = useState("candidates");
+  const [tab, setTab] = useState("jobs");
   const [candidates, setCandidates] = useState([]);
   const [jobs, setJobs] = useState([]);
-  const [parsed, setParsed] = useState(null);
-  const [file, setFile] = useState(null);
   const [applicationResume, setApplicationResume] = useState(null);
   const [applicationParsed, setApplicationParsed] = useState(null);
   const [candidateFilter, setCandidateFilter] = useState("");
-  const [position, setPosition] = useState("售前解决方案顾问");
-  const [jobDescription, setJobDescription] = useState(DEFAULT_JD);
+  const [jobForm, setJobForm] = useState({
+    name: "",
+    department: "",
+    location: "",
+    description: "",
+    responsibilities: "",
+    requirements: "",
+  });
   const [application, setApplication] = useState({
     intended_position: "售前解决方案顾问",
     intended_city: "",
@@ -220,8 +224,6 @@ function App() {
       .then((items) => {
         setJobs(items);
         if (items[0]) {
-          setPosition(items[0].name);
-          setJobDescription(items[0].description);
           setApplication((current) => ({ ...current, intended_position: items[0].name }));
         }
       })
@@ -235,6 +237,14 @@ function App() {
 
   function getJobByName(name) {
     return jobs.find((job) => job.name === name) || jobs[0] || { name, description: DEFAULT_JD };
+  }
+
+  function jobKnowledgeText(job) {
+    return [job.description, job.responsibilities, job.requirements].filter(Boolean).join("\n");
+  }
+
+  function updateJobForm(key, value) {
+    setJobForm((current) => ({ ...current, [key]: value }));
   }
 
   function updateApplication(key, value) {
@@ -287,21 +297,21 @@ function App() {
     return items.some((item) => Object.values(item).some(isFilled));
   }
 
-  async function handleUpload(event) {
+  async function handleCreateJob(event) {
     event.preventDefault();
-    if (!file) return setNotice("请先选择简历文件");
-    const result = await uploadResume(file, position, jobDescription);
-    setParsed(result.parsed);
-    setNotice("AI 解析完成，请确认后入库");
-  }
-
-  async function handleCreateCandidate() {
-    if (!parsed) return;
-    const item = await createCandidate(parsed);
-    setSelectedId(String(item.id));
-    setParsed(null);
-    await refresh();
-    setNotice("候选人已入库");
+    if (!jobForm.name.trim()) return setNotice("请填写岗位名称");
+    await createJob(jobForm);
+    const items = await listJobs();
+    setJobs(items);
+    setJobForm({
+      name: "",
+      department: "",
+      location: "",
+      description: "",
+      responsibilities: "",
+      requirements: "",
+    });
+    setNotice("岗位已新增，可在投递页选择该岗位");
   }
 
   async function handleInterview(event) {
@@ -345,7 +355,7 @@ function App() {
     setApplicationParsed(null);
     if (!fileValue) return;
     const selectedJob = getJobByName(application.intended_position);
-    const result = await uploadResume(fileValue, selectedJob.name, selectedJob.description);
+    const result = await uploadResume(fileValue, selectedJob.name, jobKnowledgeText(selectedJob));
     const applicationForm = result.application_form || {};
     const parsedApplication = applicationForm.application || {};
     const parsedRepeats = applicationForm.repeat_forms || {};
@@ -649,9 +659,9 @@ function App() {
     <main>
       <aside>
         <h1>AI 招聘提效</h1>
-        {["upload", "candidates", "interview", "dashboard", "report"].map((key) => (
+        {["jobs", "candidates", "interview", "dashboard", "report"].map((key) => (
           <button className={tab === key ? "active" : ""} key={key} onClick={() => setTab(key)}>
-            {({ upload: "简历录入", candidates: "候选人", interview: "面试反馈", dashboard: "数据看板", report: "报告同步" })[key]}
+            {({ jobs: "岗位管理", candidates: "候选人", interview: "面试反馈", dashboard: "数据看板", report: "报告同步" })[key]}
           </button>
         ))}
       </aside>
@@ -659,31 +669,52 @@ function App() {
       <section className="content">
         {notice && <div className="notice">{notice}</div>}
 
-        {tab === "upload" && (
+        {tab === "jobs" && (
           <div className="panel">
-            <h2>候选人录入</h2>
-            <form onSubmit={handleUpload} className="grid">
+            <h2>岗位管理</h2>
+            <form onSubmit={handleCreateJob} className="grid">
               <label>
-                简历文件
-                <input type="file" accept=".pdf,.doc,.docx,.txt" onChange={(e) => setFile(e.target.files?.[0])} />
+                岗位名称
+                <input value={jobForm.name} onChange={(e) => updateJobForm("name", e.target.value)} placeholder="例如：AI 应用工程师" />
               </label>
               <label>
-                岗位
-                <input value={position} onChange={(e) => setPosition(e.target.value)} />
+                所属部门
+                <input value={jobForm.department} onChange={(e) => updateJobForm("department", e.target.value)} placeholder="例如：AI 平台部" />
+              </label>
+              <label>
+                工作地点
+                <input value={jobForm.location} onChange={(e) => updateJobForm("location", e.target.value)} placeholder="例如：杭州" />
+              </label>
+              <label>
+                岗位概述
+                <input value={jobForm.description} onChange={(e) => updateJobForm("description", e.target.value)} placeholder="一句话说明岗位定位" />
               </label>
               <label className="wide">
-                岗位 JD
-                <textarea value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} />
+                岗位职责
+                <textarea value={jobForm.responsibilities} onChange={(e) => updateJobForm("responsibilities", e.target.value)} placeholder="填写该岗位日常负责事项、产出和协作对象" />
               </label>
-              <button type="submit">AI 解析</button>
+              <label className="wide">
+                岗位要求
+                <textarea value={jobForm.requirements} onChange={(e) => updateJobForm("requirements", e.target.value)} placeholder="填写技能、经验、学历、能力等要求" />
+              </label>
+              <button type="submit">新增岗位</button>
             </form>
-            {parsed && (
-              <div className="result">
-                <h3>解析结果</h3>
-                <pre>{JSON.stringify(parsed, null, 2)}</pre>
-                <button onClick={handleCreateCandidate}>确认入库</button>
-              </div>
-            )}
+            <table>
+              <thead>
+                <tr><th>岗位</th><th>部门</th><th>地点</th><th>状态</th><th>岗位要求</th></tr>
+              </thead>
+              <tbody>
+                {jobs.map((job) => (
+                  <tr key={job.id}>
+                    <td>{job.name}</td>
+                    <td>{job.department || "待补充"}</td>
+                    <td>{job.location || "待补充"}</td>
+                    <td>{job.status}</td>
+                    <td>{job.requirements || job.description || "待补充"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -779,4 +810,6 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+const rootEl = document.getElementById("root");
+window.__AI_RECRUITMENT_ROOT__ ||= createRoot(rootEl);
+window.__AI_RECRUITMENT_ROOT__.render(<App />);

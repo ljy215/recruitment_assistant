@@ -25,6 +25,14 @@ export async function listJobs() {
   return request("/api/jobs");
 }
 
+export async function createJob(payload) {
+  return request("/api/jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function submitApplication(payload) {
   const form = new FormData();
   form.append("resume", payload.resume);
