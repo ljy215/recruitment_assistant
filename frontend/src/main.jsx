@@ -8,6 +8,8 @@ import {
   createJob,
   dashboardSummary,
   groupCopyMessage,
+  interviewerSchedule,
+  listInterviewers,
   listJobs,
   listCandidates,
   positionReport,
@@ -91,7 +93,7 @@ const EMPTY_REPEAT = {
     org: "",
   },
 };
-const INTERVIEWERS = ["张敏", "王磊", "陈晨", "刘洋"];
+const DEFAULT_INTERVIEWERS = ["张敏", "王磊", "陈晨", "刘洋"];
 
 function Chart({ title, data }) {
   const chartId = useMemo(() => `chart-${Math.random().toString(36).slice(2)}`, []);
@@ -211,7 +213,9 @@ function App() {
   const [message, setMessage] = useState("");
   const [notice, setNotice] = useState("");
   const [advanceTarget, setAdvanceTarget] = useState(null);
-  const [advanceForm, setAdvanceForm] = useState({ interviewer: INTERVIEWERS[0], note: "" });
+  const [interviewers, setInterviewers] = useState(DEFAULT_INTERVIEWERS);
+  const [schedule, setSchedule] = useState(null);
+  const [advanceForm, setAdvanceForm] = useState({ interviewer: DEFAULT_INTERVIEWERS[0], interview_time: "", note: "" });
 
   async function refresh(positionOverride = candidateFilter) {
     const items = await listCandidates(positionOverride);
@@ -232,6 +236,18 @@ function App() {
         }
       })
       .then(() => refresh())
+      .catch((error) => setNotice(error.message));
+  }, []);
+
+  useEffect(() => {
+    listInterviewers()
+      .then((items) => {
+        const names = items.map((item) => item.name);
+        if (names.length) {
+          setInterviewers(names);
+          setAdvanceForm((current) => ({ ...current, interviewer: current.interviewer || names[0] }));
+        }
+      })
       .catch((error) => setNotice(error.message));
   }, []);
 
@@ -360,16 +376,32 @@ function App() {
 
   function openAdvanceModal(candidate) {
     setAdvanceTarget(candidate);
+    const interviewer = interviewers[0] || DEFAULT_INTERVIEWERS[0];
     setAdvanceForm({
-      interviewer: INTERVIEWERS[0],
+      interviewer,
+      interview_time: "",
       note: `${candidate.name} 当前状态为${candidate.status}，下一步：${nextStatusLabel(candidate.status)}。`,
     });
   }
+
+  useEffect(() => {
+    if (!advanceTarget || !advanceForm.interviewer) return;
+    interviewerSchedule(advanceForm.interviewer)
+      .then((data) => {
+        setSchedule(data);
+        setAdvanceForm((current) => {
+          const stillAvailable = data.days.some((day) => day.slots.some((slot) => slot.time === current.interview_time && !slot.busy));
+          return stillAvailable ? current : { ...current, interview_time: "" };
+        });
+      })
+      .catch((error) => setNotice(error.message));
+  }, [advanceTarget, advanceForm.interviewer]);
 
   async function handleAdvanceSubmit(event) {
     event.preventDefault();
     if (!advanceTarget) return;
     if (!advanceForm.interviewer.trim()) return setNotice("请选择面试官");
+    if (!advanceForm.interview_time) return setNotice("请选择一个空闲面试时间");
     const updated = await advanceCandidate(advanceTarget.id, advanceForm);
     setAdvanceTarget(null);
     setSelectedId(String(updated.id));
@@ -863,10 +895,39 @@ function App() {
             <form onSubmit={handleAdvanceSubmit} className="grid">
               <label>
                 选择面试官
-                <select value={advanceForm.interviewer} onChange={(event) => setAdvanceForm((current) => ({ ...current, interviewer: event.target.value }))}>
-                  {INTERVIEWERS.map((item) => <option value={item} key={item}>{item}</option>)}
+                <select value={advanceForm.interviewer} onChange={(event) => setAdvanceForm((current) => ({ ...current, interviewer: event.target.value, interview_time: "" }))}>
+                  {interviewers.map((item) => <option value={item} key={item}>{item}</option>)}
                 </select>
               </label>
+              <div className="wide schedule-board">
+                <div className="schedule-head">
+                  <strong>{advanceForm.interviewer} 本周排班</strong>
+                  <span>{schedule ? `${schedule.week_start} 至 ${schedule.week_end}` : "加载中"}</span>
+                </div>
+                <div className="schedule-grid">
+                  {schedule?.days.map((day) => (
+                    <div className="schedule-day" key={day.date}>
+                      <strong>{day.weekday}</strong>
+                      <span>{day.date.slice(5)}</span>
+                      {day.slots.map((slot) => (
+                        <button
+                          type="button"
+                          className={`slot ${slot.busy ? "busy" : ""} ${advanceForm.interview_time === slot.time ? "selected" : ""}`}
+                          disabled={slot.busy}
+                          onClick={() => setAdvanceForm((current) => ({ ...current, interview_time: slot.time }))}
+                          title={slot.reason || "空闲"}
+                          key={slot.time}
+                        >
+                          {slot.label}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                <p className="schedule-tip">
+                  {advanceForm.interview_time ? `已选择：${advanceForm.interview_time}` : "请选择一个空闲时间安排面试。灰色为已占用。"}
+                </p>
+              </div>
               <label className="wide">
                 备注
                 <textarea value={advanceForm.note} onChange={(event) => setAdvanceForm((current) => ({ ...current, note: event.target.value }))} />

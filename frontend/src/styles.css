@@ -430,7 +430,9 @@ tr.selected {
 }
 
 .modal {
-  width: min(560px, 100%);
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
   border-radius: 8px;
   padding: 22px;
   background: #fff;
@@ -452,6 +454,68 @@ tr.selected {
 button.secondary {
   color: #1f2937;
   background: #eef2f7;
+}
+
+.schedule-board {
+  border: 1px solid #d7dfec;
+  border-radius: 8px;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.schedule-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.schedule-head span,
+.schedule-tip {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.schedule-day {
+  display: grid;
+  gap: 8px;
+}
+
+.schedule-day > span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.slot {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid #c7d7ee;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.slot:hover:not(:disabled),
+.slot.selected {
+  color: #fff;
+  background: #2563eb;
+}
+
+.slot.busy,
+.slot:disabled {
+  color: #94a3b8;
+  background: #e5e7eb;
+  cursor: not-allowed;
+}
+
+.schedule-tip {
+  margin: 12px 0 0;
 }
 
 .metrics,

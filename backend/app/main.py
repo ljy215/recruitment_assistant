@@ -4,6 +4,7 @@ import io
 import json
 import re
 import time
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -63,6 +64,7 @@ class GroupMessageRequest(BaseModel):
 
 class CandidateAdvanceRequest(BaseModel):
     interviewer: str
+    interview_time: str = ""
     note: str = ""
 
 
@@ -122,6 +124,9 @@ DEMO_CANDIDATES = [
     ("吴迪", 82, ["客户沟通", "售前经验", "抗压能力"], "有售前场景经验，方案深度中等。"),
     ("郑可", 78, ["数据意识", "逻辑表达", "学习能力"], "回答逻辑较清楚，业务深度仍需补充。"),
 ]
+
+INTERVIEWERS = ["张敏", "王磊", "陈晨", "刘洋"]
+INTERVIEW_SLOTS = ["09:30", "10:30", "14:00", "15:30", "16:30"]
 
 
 @app.on_event("startup")
@@ -235,6 +240,63 @@ def list_jobs_from_db(include_closed: bool = False) -> list[dict]:
         return [row_to_dict(row) for row in conn.execute(query, params).fetchall()]
 
 
+def current_schedule_week_start() -> date:
+    today = date.today()
+    if today.weekday() >= 5:
+        return today + timedelta(days=7 - today.weekday())
+    return today - timedelta(days=today.weekday())
+
+
+def deterministic_busy(interviewer: str, day: date, slot: str) -> bool:
+    raw = f"{interviewer}-{day.isoformat()}-{slot}"
+    return int(hashlib.sha1(raw.encode("utf-8")).hexdigest()[:2], 16) % 7 == 0
+
+
+def get_interviewer_schedule(interviewer: str) -> dict:
+    if interviewer not in INTERVIEWERS:
+        raise HTTPException(status_code=404, detail="interviewer not found")
+    week_start = current_schedule_week_start()
+    week_end = week_start + timedelta(days=4)
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT interview_time, final_result
+            FROM interviews
+            WHERE interviewer = ? AND interview_time BETWEEN ? AND ?
+            """,
+            (
+                interviewer,
+                f"{week_start.isoformat()} 00:00",
+                f"{week_end.isoformat()} 23:59",
+            ),
+        ).fetchall()
+    occupied = {row["interview_time"]: row["final_result"] or "已有面试" for row in rows if row["interview_time"]}
+    days = []
+    for offset in range(5):
+        day = week_start + timedelta(days=offset)
+        slots = []
+        for slot in INTERVIEW_SLOTS:
+            value = f"{day.isoformat()} {slot}"
+            synthetic_busy = deterministic_busy(interviewer, day, slot)
+            is_busy = value in occupied or synthetic_busy
+            slots.append(
+                {
+                    "time": value,
+                    "label": slot,
+                    "busy": is_busy,
+                    "reason": occupied.get(value) or ("部门会议" if synthetic_busy else ""),
+                }
+            )
+        days.append(
+            {
+                "date": day.isoformat(),
+                "weekday": ["周一", "周二", "周三", "周四", "周五"][offset],
+                "slots": slots,
+            }
+        )
+    return {"interviewer": interviewer, "week_start": week_start.isoformat(), "week_end": week_end.isoformat(), "days": days}
+
+
 def job_to_jd(job: dict) -> str:
     return "\n".join(
         [
@@ -288,6 +350,16 @@ async def create_job(payload: JobCreate):
         )
         row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         return row_to_dict(row)
+
+
+@app.get("/api/interviewers")
+async def list_interviewers():
+    return [{"name": name} for name in INTERVIEWERS]
+
+
+@app.get("/api/interviewers/{interviewer}/schedule")
+async def interviewer_schedule(interviewer: str):
+    return get_interviewer_schedule(interviewer)
 
 
 @app.post("/api/resumes/upload")
@@ -468,7 +540,19 @@ async def advance_candidate(candidate_id: int, payload: CandidateAdvanceRequest)
             raise HTTPException(status_code=404, detail="candidate not found")
         candidate = row_to_dict(row)
         next_status = next_candidate_status(candidate["status"])
-        transcript = payload.note.strip() or f"流程推进：{candidate['status']} -> {next_status}；面试官：{payload.interviewer.strip()}"
+        interview_time = payload.interview_time.strip()
+        if not interview_time:
+            raise HTTPException(status_code=400, detail="interview_time is required")
+        schedule = get_interviewer_schedule(payload.interviewer.strip())
+        available_slots = {
+            slot["time"]
+            for day in schedule["days"]
+            for slot in day["slots"]
+            if not slot["busy"]
+        }
+        if interview_time not in available_slots:
+            raise HTTPException(status_code=400, detail="selected slot is not available")
+        transcript = payload.note.strip() or f"流程推进：{candidate['status']} -> {next_status}；面试官：{payload.interviewer.strip()}；时间：{interview_time}"
         cursor = conn.execute(
             """
             INSERT INTO interviews (
@@ -479,9 +563,9 @@ async def advance_candidate(candidate_id: int, payload: CandidateAdvanceRequest)
             (
                 candidate_id,
                 payload.interviewer.strip(),
-                "",
+                interview_time,
                 transcript,
-                f"已推进至{next_status}，面试官为{payload.interviewer.strip()}。",
+                f"已推进至{next_status}，面试官为{payload.interviewer.strip()}，面试时间为{interview_time}。",
                 to_json([]),
                 to_json([]),
                 0,

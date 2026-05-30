@@ -25,6 +25,14 @@ export async function listJobs() {
   return request("/api/jobs");
 }
 
+export async function listInterviewers() {
+  return request("/api/interviewers");
+}
+
+export async function interviewerSchedule(interviewer) {
+  return request(`/api/interviewers/${encodeURIComponent(interviewer)}/schedule`);
+}
+
 export async function createJob(payload) {
   return request("/api/jobs", {
     method: "POST",
