@@ -69,6 +69,14 @@ export async function createInterview(payload) {
   });
 }
 
+export async function advanceCandidate(candidateId, payload) {
+  return request(`/api/candidates/${candidateId}/advance`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function dashboardSummary() {
   return request("/api/dashboard/summary");
 }

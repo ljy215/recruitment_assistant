@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import * as echarts from "echarts";
 import {
   API_ORIGIN,
+  advanceCandidate,
   createInterview,
   createJob,
   dashboardSummary,
@@ -90,6 +91,7 @@ const EMPTY_REPEAT = {
     org: "",
   },
 };
+const INTERVIEWERS = ["张敏", "王磊", "陈晨", "刘洋"];
 
 function Chart({ title, data }) {
   const chartId = useMemo(() => `chart-${Math.random().toString(36).slice(2)}`, []);
@@ -208,6 +210,8 @@ function App() {
   const [report, setReport] = useState("");
   const [message, setMessage] = useState("");
   const [notice, setNotice] = useState("");
+  const [advanceTarget, setAdvanceTarget] = useState(null);
+  const [advanceForm, setAdvanceForm] = useState({ interviewer: INTERVIEWERS[0], note: "" });
 
   async function refresh(positionOverride = candidateFilter) {
     const items = await listCandidates(positionOverride);
@@ -339,6 +343,38 @@ function App() {
     setMessage(result.content);
     await navigator.clipboard?.writeText(result.content);
     setNotice("群同步文案已生成，支持复制到企业微信群");
+  }
+
+  function nextStatusLabel(status) {
+    const transitions = {
+      已投递: "进入一面",
+      待初筛: "进入一面",
+      一面待安排: "开始一面",
+      一面中: "进入二面",
+      二面待安排: "开始二面",
+      二面中: "进入终面",
+      待定: "进入一面",
+    };
+    return transitions[status] || "进入一面";
+  }
+
+  function openAdvanceModal(candidate) {
+    setAdvanceTarget(candidate);
+    setAdvanceForm({
+      interviewer: INTERVIEWERS[0],
+      note: `${candidate.name} 当前状态为${candidate.status}，下一步：${nextStatusLabel(candidate.status)}。`,
+    });
+  }
+
+  async function handleAdvanceSubmit(event) {
+    event.preventDefault();
+    if (!advanceTarget) return;
+    if (!advanceForm.interviewer.trim()) return setNotice("请选择面试官");
+    const updated = await advanceCandidate(advanceTarget.id, advanceForm);
+    setAdvanceTarget(null);
+    setSelectedId(String(updated.id));
+    await refresh();
+    setNotice(`${updated.name} 已推进至 ${updated.status}`);
   }
 
   async function handleSeedDemo() {
@@ -742,7 +778,7 @@ function App() {
             </div>
             <table>
               <thead>
-                <tr><th>姓名</th><th>岗位</th><th>状态</th><th>评分</th><th>标签</th></tr>
+                <tr><th>姓名</th><th>岗位</th><th>状态</th><th>评分</th><th>标签</th><th>AI 初筛建议</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {candidates.map((item) => (
@@ -752,6 +788,12 @@ function App() {
                     <td>{item.status}</td>
                     <td>{item.match_score}</td>
                     <td>{item.tags.join("、")}</td>
+                    <td className="suggestion-cell">{item.screening_suggestion || "待 AI 初筛"}</td>
+                    <td className="action-cell">
+                      <button type="button" onClick={(event) => { event.stopPropagation(); openAdvanceModal(item); }}>
+                        推进下一步
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -811,6 +853,32 @@ function App() {
           </div>
         )}
       </section>
+      {advanceTarget && (
+        <div className="modal-backdrop" onClick={() => setAdvanceTarget(null)}>
+          <div className="modal" onClick={(event) => event.stopPropagation()}>
+            <h2>推进下一步</h2>
+            <p className="modal-copy">
+              {advanceTarget.name} 当前状态为 <strong>{advanceTarget.status}</strong>，下一步将{nextStatusLabel(advanceTarget.status)}。
+            </p>
+            <form onSubmit={handleAdvanceSubmit} className="grid">
+              <label>
+                选择面试官
+                <select value={advanceForm.interviewer} onChange={(event) => setAdvanceForm((current) => ({ ...current, interviewer: event.target.value }))}>
+                  {INTERVIEWERS.map((item) => <option value={item} key={item}>{item}</option>)}
+                </select>
+              </label>
+              <label className="wide">
+                备注
+                <textarea value={advanceForm.note} onChange={(event) => setAdvanceForm((current) => ({ ...current, note: event.target.value }))} />
+              </label>
+              <div className="modal-actions">
+                <button type="button" className="secondary" onClick={() => setAdvanceTarget(null)}>取消</button>
+                <button type="submit">确认推进</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

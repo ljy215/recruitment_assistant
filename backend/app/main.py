@@ -61,6 +61,11 @@ class GroupMessageRequest(BaseModel):
     next_action: str = "请相关同学确认下一步安排"
 
 
+class CandidateAdvanceRequest(BaseModel):
+    interviewer: str
+    note: str = ""
+
+
 class JobCreate(BaseModel):
     name: str
     department: str = ""
@@ -438,6 +443,61 @@ async def update_candidate(candidate_id: int, payload: dict):
         )
         row = conn.execute("SELECT * FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
         return row_to_dict(row)
+
+
+def next_candidate_status(current: str) -> str:
+    transitions = {
+        "已投递": "一面待安排",
+        "待初筛": "一面待安排",
+        "一面待安排": "一面中",
+        "一面中": "二面待安排",
+        "二面待安排": "二面中",
+        "二面中": "终面待安排",
+        "待定": "一面待安排",
+    }
+    return transitions.get(current, "一面待安排")
+
+
+@app.post("/api/candidates/{candidate_id}/advance")
+async def advance_candidate(candidate_id: int, payload: CandidateAdvanceRequest):
+    if not payload.interviewer.strip():
+        raise HTTPException(status_code=400, detail="interviewer is required")
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="candidate not found")
+        candidate = row_to_dict(row)
+        next_status = next_candidate_status(candidate["status"])
+        transcript = payload.note.strip() or f"流程推进：{candidate['status']} -> {next_status}；面试官：{payload.interviewer.strip()}"
+        cursor = conn.execute(
+            """
+            INSERT INTO interviews (
+                candidate_id, interviewer, interview_time, transcript, ai_summary, strengths,
+                risks, human_score, ai_suggestion, final_result, reason_category
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                candidate_id,
+                payload.interviewer.strip(),
+                "",
+                transcript,
+                f"已推进至{next_status}，面试官为{payload.interviewer.strip()}。",
+                to_json([]),
+                to_json([]),
+                0,
+                "待面试反馈",
+                next_status,
+                "流程推进",
+            ),
+        )
+        conn.execute(
+            "UPDATE candidates SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (next_status, candidate_id),
+        )
+        updated = conn.execute("SELECT * FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
+        item = row_to_dict(updated)
+        item["advance_record_id"] = cursor.lastrowid
+        return item
 
 
 @app.post("/api/ai/analyze-interview")

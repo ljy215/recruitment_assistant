@@ -392,6 +392,7 @@ pre,
 table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 th,
@@ -403,6 +404,54 @@ td {
 
 tr.selected {
   background: #eef5ff;
+}
+
+.suggestion-cell {
+  color: #344054;
+  line-height: 1.55;
+}
+
+.action-cell {
+  width: 136px;
+}
+
+.action-cell button {
+  min-width: 96px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 20;
+}
+
+.modal {
+  width: min(560px, 100%);
+  border-radius: 8px;
+  padding: 22px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+}
+
+.modal-copy {
+  margin: 0 0 18px;
+  color: #475467;
+}
+
+.modal-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+button.secondary {
+  color: #1f2937;
+  background: #eef2f7;
 }
 
 .metrics,
