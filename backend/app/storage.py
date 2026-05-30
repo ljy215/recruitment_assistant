@@ -69,6 +69,16 @@ def init_db() -> None:
             );
             """
         )
+        ensure_column(conn, "candidates", "resume_filename", "TEXT")
+        ensure_column(conn, "candidates", "resume_path", "TEXT")
+        ensure_column(conn, "candidates", "resume_text", "TEXT")
+        ensure_column(conn, "candidates", "application_data", "TEXT")
+
+
+def ensure_column(conn: sqlite3.Connection, table: str, column: str, column_type: str) -> None:
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
 
 
 def row_to_dict(row: sqlite3.Row) -> dict:
@@ -79,6 +89,11 @@ def row_to_dict(row: sqlite3.Row) -> dict:
                 item[key] = json.loads(item[key] or "[]")
             except json.JSONDecodeError:
                 item[key] = []
+    if "application_data" in item:
+        try:
+            item["application_data"] = json.loads(item["application_data"] or "{}")
+        except json.JSONDecodeError:
+            item["application_data"] = {}
     return item
 
 

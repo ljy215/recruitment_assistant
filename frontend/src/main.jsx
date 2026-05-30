@@ -422,7 +422,12 @@ function App() {
     if (!firstEducation.major.trim()) return setNotice("请填写教育背景中的专业名称");
     if (!firstEducation.degree.trim()) return setNotice("请选择教育背景中的学历");
     if (!application.agreed) return setNotice("请先阅读并同意隐私协议和招聘隐私政策");
-    const created = await submitApplication({ ...application, resume: applicationResume });
+    const created = await submitApplication({
+      ...application,
+      resume: applicationResume,
+      application,
+      repeatForms,
+    });
     setSelectedId(String(created.id));
     setCandidateFilter("");
     await refresh("");

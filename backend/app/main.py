@@ -1,7 +1,9 @@
 import csv
 import hashlib
 import io
+import json
 import re
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -39,6 +41,10 @@ class CandidateCreate(BaseModel):
     risk_points: list[str] = []
     summary: str = ""
     screening_suggestion: str = ""
+    resume_filename: str = ""
+    resume_path: str = ""
+    resume_text: str = ""
+    application_data: dict = {}
 
 
 class InterviewCreate(BaseModel):
@@ -121,7 +127,11 @@ def startup() -> None:
 
 def read_upload_text(file: UploadFile) -> str:
     raw = file.file.read()
-    suffix = Path(file.filename or "").suffix.lower()
+    return extract_upload_text(raw, file.filename or "")
+
+
+def extract_upload_text(raw: bytes, filename: str) -> str:
+    suffix = Path(filename or "").suffix.lower()
     if suffix == ".pdf":
         try:
             from pypdf import PdfReader
@@ -139,6 +149,28 @@ def read_upload_text(file: UploadFile) -> str:
         except Exception:
             return raw.decode("utf-8", errors="ignore")
     return raw.decode("utf-8", errors="ignore")
+
+
+def save_resume_file(raw: bytes, filename: str) -> str:
+    safe_name = re.sub(r"[^0-9A-Za-z._-]+", "_", filename or "resume.pdf").strip("._")
+    suffix = Path(safe_name).suffix or ".pdf"
+    stem = Path(safe_name).stem or "resume"
+    digest = hashlib.sha1(raw).hexdigest()[:10]
+    saved_name = f"{int(time.time())}_{digest}_{stem}{suffix}"
+    resume_dir = Path("data") / "resumes"
+    resume_dir.mkdir(parents=True, exist_ok=True)
+    target = resume_dir / saved_name
+    target.write_bytes(raw)
+    return str(target.as_posix())
+
+
+def parse_json_form(value: str, default):
+    if not value:
+        return default
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return default
 
 
 def find_job(position: str) -> dict:
@@ -198,10 +230,26 @@ def list_jobs_from_db(include_closed: bool = False) -> list[dict]:
         return [row_to_dict(row) for row in conn.execute(query, params).fetchall()]
 
 
-def analyze_resume_with_agent(text: str, position: str, job_description: str = "") -> dict:
+def job_to_jd(job: dict) -> str:
+    return "\n".join(
+        [
+            f"岗位名称：{job.get('name', '')}",
+            f"岗位概述：{job.get('description', '')}",
+            f"岗位职责：{job.get('responsibilities', '')}",
+            f"岗位要求：{job.get('requirements', '')}",
+        ]
+    )
+
+
+def analyze_resume_with_agent(
+    text: str,
+    position: str,
+    job_description: str = "",
+    candidate_info: dict | None = None,
+) -> dict:
     profile = extract_resume_profile(text, position)
     jobs = list_jobs_from_db(include_closed=True)
-    match_result = analyze_candidate_match(text, position, jobs, job_description)
+    match_result = analyze_candidate_match(text, position, jobs, job_description, candidate_info)
     return {**profile, **match_result}
 
 
@@ -264,10 +312,21 @@ async def submit_application(
     education: str = Form(""),
     school: str = Form(""),
     work_years: str = Form(""),
+    application_json: str = Form("{}"),
+    repeat_forms_json: str = Form("{}"),
 ):
     job = find_job(intended_position)
-    text = read_upload_text(resume)
-    parsed = analyze_resume_with_agent(text, job["name"], job["description"])
+    raw = resume.file.read()
+    text = extract_upload_text(raw, resume.filename or "")
+    resume_path = save_resume_file(raw, resume.filename or "")
+    application_payload = parse_json_form(application_json, {})
+    repeat_forms_payload = parse_json_form(repeat_forms_json, {})
+    parsed_form = parse_application_resume(text, job["name"], job_to_jd(job))
+    candidate_info = {
+        "application": {**parsed_form.get("application", {}), **application_payload},
+        "repeat_forms": repeat_forms_payload or parsed_form.get("repeat_forms", {}),
+    }
+    parsed = analyze_resume_with_agent(text, job["name"], job_to_jd(job), candidate_info)
     candidate = CandidateCreate(
         name=name.strip() or parsed["name"],
         position=job["name"],
@@ -282,6 +341,10 @@ async def submit_application(
         risk_points=parsed["risk_points"],
         summary=parsed["summary"],
         screening_suggestion=parsed["screening_suggestion"],
+        resume_filename=resume.filename or "",
+        resume_path=resume_path,
+        resume_text=text[:6000],
+        application_data=candidate_info,
     )
     return await create_candidate(candidate)
 
@@ -301,8 +364,9 @@ async def create_candidate(candidate: CandidateCreate):
             """
             INSERT INTO candidates (
                 name, position, phone_masked, email_masked, education, school, work_years,
-                status, match_score, tags, risk_points, summary, screening_suggestion
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                status, match_score, tags, risk_points, summary, screening_suggestion,
+                resume_filename, resume_path, resume_text, application_data
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 candidate.name,
@@ -318,6 +382,10 @@ async def create_candidate(candidate: CandidateCreate):
                 to_json(candidate.risk_points),
                 candidate.summary,
                 candidate.screening_suggestion,
+                candidate.resume_filename,
+                candidate.resume_path,
+                candidate.resume_text,
+                json.dumps(candidate.application_data or {}, ensure_ascii=False),
             ),
         )
         row = conn.execute("SELECT * FROM candidates WHERE id = ?", (cursor.lastrowid,)).fetchone()

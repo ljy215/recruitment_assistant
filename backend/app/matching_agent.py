@@ -58,7 +58,7 @@ def find_job_knowledge(position: str, jobs: list[dict[str, Any]], job_descriptio
     }
 
 
-def extract_candidate_signals(resume_text: str) -> dict[str, Any]:
+def extract_candidate_signals(resume_text: str, candidate_info: dict[str, Any] | None = None) -> dict[str, Any]:
     text = resume_text or ""
     skills = [skill for skill in SKILL_KEYWORDS if skill.lower() in text.lower()]
     degree = next((item for item in ["博士", "硕士", "本科", "大专"] if item in text), "待补充")
@@ -67,6 +67,7 @@ def extract_candidate_signals(resume_text: str) -> dict[str, Any]:
         "degree": degree,
         "skills": skills,
         "project_count": projects,
+        "structured_info": candidate_info or {},
         "resume_excerpt": text[:1800],
     }
 
@@ -91,9 +92,15 @@ def normalize_agent_result(payload: dict[str, Any], position: str) -> dict[str, 
     }
 
 
-def local_match_agent(resume_text: str, position: str, jobs: list[dict[str, Any]], job_description: str = "") -> dict[str, Any]:
+def local_match_agent(
+    resume_text: str,
+    position: str,
+    jobs: list[dict[str, Any]],
+    job_description: str = "",
+    candidate_info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     job = find_job_knowledge(position, jobs, job_description)
-    candidate = extract_candidate_signals(resume_text)
+    candidate = extract_candidate_signals(resume_text, candidate_info)
     combined_job = "\n".join(
         [
             job.get("name", ""),
@@ -149,7 +156,13 @@ def local_match_agent(resume_text: str, position: str, jobs: list[dict[str, Any]
     )
 
 
-def langchain_match_agent(resume_text: str, position: str, jobs: list[dict[str, Any]], job_description: str = "") -> dict[str, Any] | None:
+def langchain_match_agent(
+    resume_text: str,
+    position: str,
+    jobs: list[dict[str, Any]],
+    job_description: str = "",
+    candidate_info: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     if not (LLM_BASE_URL and LLM_API_KEY and LLM_MODEL):
         return None
     try:
@@ -159,7 +172,7 @@ def langchain_match_agent(resume_text: str, position: str, jobs: list[dict[str, 
         return None
 
     job = find_job_knowledge(position, jobs, job_description)
-    candidate = extract_candidate_signals(resume_text)
+    candidate = extract_candidate_signals(resume_text, candidate_info)
     prompt = ChatPromptTemplate.from_messages(
         [
             (
@@ -170,8 +183,9 @@ def langchain_match_agent(resume_text: str, position: str, jobs: list[dict[str, 
                 "human",
                 "\n".join(
                     [
-                        "岗位知识库：{job}",
+                        "岗位JD/知识库：{job}",
                         "候选人信息：{candidate}",
+                        "请综合候选人上传简历文本、在线投递表单、教育/项目/实习经历，与岗位职责和岗位要求做匹配。",
                         "输出字段：match_score(0-100整数), tags(数组), risk_points(数组), summary, screening_suggestion。",
                         "标签要短，例如：Python符合要求、项目经历较丰富、学历符合要求。",
                     ]
@@ -203,8 +217,14 @@ def langchain_match_agent(resume_text: str, position: str, jobs: list[dict[str, 
     return normalize_agent_result(payload, job.get("name") or position)
 
 
-def analyze_candidate_match(resume_text: str, position: str, jobs: list[dict[str, Any]], job_description: str = "") -> dict[str, Any]:
+def analyze_candidate_match(
+    resume_text: str,
+    position: str,
+    jobs: list[dict[str, Any]],
+    job_description: str = "",
+    candidate_info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return (
-        langchain_match_agent(resume_text, position, jobs, job_description)
-        or local_match_agent(resume_text, position, jobs, job_description)
+        langchain_match_agent(resume_text, position, jobs, job_description, candidate_info)
+        or local_match_agent(resume_text, position, jobs, job_description, candidate_info)
     )

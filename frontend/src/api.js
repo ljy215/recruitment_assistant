@@ -43,6 +43,8 @@ export async function submitApplication(payload) {
   form.append("education", payload.education || "");
   form.append("school", payload.school || "");
   form.append("work_years", payload.work_years || "");
+  form.append("application_json", JSON.stringify(payload.application || {}));
+  form.append("repeat_forms_json", JSON.stringify(payload.repeatForms || {}));
   return request("/api/applications", { method: "POST", body: form });
 }
 
