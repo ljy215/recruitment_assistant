@@ -808,28 +808,30 @@ function App() {
                 导出 CSV
               </button>
             </div>
-            <table>
-              <thead>
-                <tr><th>姓名</th><th>岗位</th><th>状态</th><th>评分</th><th>标签</th><th>AI 初筛建议</th><th>操作</th></tr>
-              </thead>
-              <tbody>
-                {candidates.map((item) => (
-                  <tr key={item.id} onClick={() => setSelectedId(String(item.id))} className={String(item.id) === selectedId ? "selected" : ""}>
-                    <td>{item.name}</td>
-                    <td>{item.position}</td>
-                    <td>{item.status}</td>
-                    <td>{item.match_score}</td>
-                    <td>{item.tags.join("、")}</td>
-                    <td className="suggestion-cell">{item.screening_suggestion || "待 AI 初筛"}</td>
-                    <td className="action-cell">
-                      <button type="button" onClick={(event) => { event.stopPropagation(); openAdvanceModal(item); }}>
-                        推进下一步
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-scroll">
+              <table className="candidate-table">
+                <thead>
+                  <tr><th className="col-name">姓名</th><th className="col-position">岗位</th><th className="col-status">状态</th><th className="col-score">评分</th><th className="col-tags">标签</th><th className="col-suggestion">AI 初筛建议</th><th className="col-action">操作</th></tr>
+                </thead>
+                <tbody>
+                  {candidates.map((item) => (
+                    <tr key={item.id} onClick={() => setSelectedId(String(item.id))} className={String(item.id) === selectedId ? "selected" : ""}>
+                      <td>{item.name}</td>
+                      <td>{item.position}</td>
+                      <td>{item.status}</td>
+                      <td>{item.match_score}</td>
+                      <td>{item.tags.join("、")}</td>
+                      <td className="suggestion-cell">{item.screening_suggestion || "待 AI 初筛"}</td>
+                      <td className="action-cell">
+                        <button type="button" onClick={(event) => { event.stopPropagation(); openAdvanceModal(item); }}>
+                          推进下一步
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

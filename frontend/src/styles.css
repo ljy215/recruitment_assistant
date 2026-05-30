@@ -392,7 +392,7 @@ pre,
 table {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 th,
@@ -404,6 +404,47 @@ td {
 
 tr.selected {
   background: #eef5ff;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.candidate-table {
+  min-width: 1180px;
+}
+
+.candidate-table th {
+  white-space: nowrap;
+}
+
+.col-name {
+  min-width: 120px;
+}
+
+.col-position {
+  min-width: 160px;
+}
+
+.col-status {
+  min-width: 110px;
+}
+
+.col-score {
+  min-width: 72px;
+}
+
+.col-tags {
+  min-width: 260px;
+}
+
+.col-suggestion {
+  min-width: 360px;
+}
+
+.col-action {
+  min-width: 140px;
 }
 
 .suggestion-cell {
