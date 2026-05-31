@@ -239,8 +239,9 @@ def public_candidate(item: dict) -> dict:
     public_item["summary"] = mask_candidate_text(public_item.get("summary"), real_name, public_name)
     public_item["screening_suggestion"] = mask_candidate_text(public_item.get("screening_suggestion"), real_name, public_name)
     public_item["application_data"] = sanitize_application_data(public_item.get("application_data") or {})
+    public_item["resume_available"] = bool(public_item.get("resume_path"))
     if public_item.get("resume_filename"):
-        public_item["resume_filename"] = "简历已上传（公开演示已隐藏原件）"
+        public_item["resume_filename"] = "候选人简历.pdf"
     public_item["resume_path"] = ""
     public_item["resume_text"] = ""
     if "interviews" in public_item:
@@ -369,33 +370,17 @@ def get_interviewer_schedule(interviewer: str) -> dict:
     business_days = next_business_days(5)
     week_start = business_days[0]
     week_end = business_days[-1]
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT interview_time, final_result
-            FROM interviews
-            WHERE interviewer = ? AND interview_time BETWEEN ? AND ?
-            """,
-            (
-                interviewer,
-                f"{week_start.isoformat()} 00:00",
-                f"{week_end.isoformat()} 23:59",
-            ),
-        ).fetchall()
-    occupied = {row["interview_time"]: row["final_result"] or "已有面试" for row in rows if row["interview_time"]}
     days = []
     for day in business_days:
         slots = []
         for slot in INTERVIEW_SLOTS:
             value = f"{day.isoformat()} {slot}"
-            synthetic_busy = deterministic_busy(interviewer, day, slot)
-            is_busy = value in occupied or synthetic_busy
             slots.append(
                 {
                     "time": value,
                     "label": slot,
-                    "busy": is_busy,
-                    "reason": occupied.get(value) or ("部门会议" if synthetic_busy else ""),
+                    "busy": False,
+                    "reason": "",
                 }
             )
         days.append(
@@ -665,8 +650,6 @@ async def get_candidate(candidate_id: int):
 
 @app.get("/api/candidates/{candidate_id}/resume")
 async def get_candidate_resume(candidate_id: int):
-    if PUBLIC_DEMO:
-        raise HTTPException(status_code=404, detail="resume hidden in public demo")
     with get_conn() as conn:
         row = conn.execute("SELECT resume_filename, resume_path FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
         if not row:
@@ -682,7 +665,7 @@ async def get_candidate_resume(candidate_id: int):
     return FileResponse(
         target,
         media_type="application/pdf" if target.suffix.lower() == ".pdf" else "application/octet-stream",
-        filename=resume_filename,
+        filename=f"{public_candidate_name(candidate_id)}-简历.pdf" if PUBLIC_DEMO else resume_filename,
     )
 
 
@@ -709,18 +692,18 @@ def next_candidate_status(current: str, total_rounds: int = 3) -> str:
     for label, round_index in ROUND_BY_LABEL.items():
         if current == f"{label}面结束":
             next_round = round_index + 1
-            return f"{ROUND_LABELS[next_round - 1]}面待安排" if next_round <= total_rounds else "最终候选"
+            return f"{ROUND_LABELS[next_round - 1]}面中" if next_round <= total_rounds else "最终候选"
         if current == f"{label}面待安排":
             return f"{label}面中"
         if current == f"{label}面中":
             next_round = round_index + 1
-            return f"{ROUND_LABELS[next_round - 1]}面待安排" if next_round <= total_rounds else "最终候选"
+            return f"{ROUND_LABELS[next_round - 1]}面中" if next_round <= total_rounds else "最终候选"
     transitions = {
-        "已投递": "一面待安排",
-        "待初筛": "一面待安排",
-        "待定": "一面待安排",
+        "已投递": "一面中",
+        "待初筛": "一面中",
+        "待定": "一面中",
     }
-    return transitions.get(current, "一面待安排")
+    return transitions.get(current, "一面中")
 
 
 @app.post("/api/candidates/{candidate_id}/advance")

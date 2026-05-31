@@ -196,6 +196,7 @@ aside button:hover {
   gap: 12px;
 }
 
+.resume-download-panel,
 .resume-toolbar {
   display: flex;
   align-items: center;
@@ -207,10 +208,18 @@ aside button:hover {
   background: #f8fafc;
 }
 
+.resume-download-panel a,
 .resume-toolbar a {
   color: #2563eb;
   font-weight: 700;
   text-decoration: none;
+}
+
+.resume-download-panel a {
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #fff;
+  background: #2563eb;
 }
 
 .pdf-resume-panel iframe {

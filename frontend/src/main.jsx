@@ -321,8 +321,7 @@ function InterviewerPage() {
     await refreshInterviews();
   }
 
-  const resumeUrl = detail?.resume_path ? `${API_ORIGIN}/api/candidates/${detail.id}/resume` : "";
-  const hasPdfResume = Boolean(resumeUrl && /\.pdf($|\?)/i.test(detail?.resume_filename || detail?.resume_path || ""));
+  const resumeUrl = detail?.resume_available || detail?.resume_path ? `${API_ORIGIN}/api/candidates/${detail.id}/resume` : "";
 
   return (
     <main className="interviewer-page">
@@ -366,16 +365,15 @@ function InterviewerPage() {
                   <span>状态<strong>{detail.status}</strong></span>
                   <span>当前评分<strong>{detail.match_score}</strong></span>
                 </div>
-                {hasPdfResume ? (
-                  <div className="pdf-resume-panel">
-                    <div className="resume-toolbar">
-                      <strong>{detail.resume_filename || "PDF 简历"}</strong>
-                      <a href={resumeUrl} target="_blank" rel="noreferrer">新窗口打开</a>
-                    </div>
-                    <iframe title={`${detail.name} 简历`} src={resumeUrl} />
+                {resumeUrl ? (
+                  <div className="resume-download-panel">
+                    <strong>{detail.resume_filename || "候选人简历.pdf"}</strong>
+                    <a href={resumeUrl} target="_blank" rel="noreferrer" download>
+                      下载简历 PDF
+                    </a>
                   </div>
                 ) : (
-                  <StructuredResume detail={detail} />
+                  <p className="empty-note">暂无可下载的 PDF 简历。</p>
                 )}
               </>
             ) : (
@@ -450,7 +448,6 @@ function App() {
     graduation_year: "",
     graduation_month: "",
     english_level: "",
-    has_family_employee: "",
     accepts_transfer: "",
     edu_start_year: "",
     edu_start_month: "",
@@ -1013,7 +1010,6 @@ function App() {
                       <label>最高学历 <em>*</em><select value={application.education} onChange={(e) => updateApplication("education", e.target.value)}><option value="">请选择</option><option>大专</option><option>本科</option><option>硕士</option><option>博士</option></select></label>
                       <label>毕业时间 <em>*</em><div className="split-row"><select value={application.graduation_year} onChange={(e) => updateApplication("graduation_year", e.target.value)}><option value="">年</option><option>2026</option><option>2027</option></select><select value={application.graduation_month} onChange={(e) => updateApplication("graduation_month", e.target.value)}><option value="">月</option><option>6</option><option>7</option></select></div></label>
                       <label>英语水平 <em>*</em><select value={application.english_level} onChange={(e) => updateApplication("english_level", e.target.value)}><option value="">请选择</option><option>CET-4</option><option>CET-6</option><option>IELTS</option><option>TOEFL</option></select></label>
-                      <label>是否有亲属在吉利控股集团任职 <em>*</em><select value={application.has_family_employee} onChange={(e) => updateApplication("has_family_employee", e.target.value)}><option value="">请选择</option><option>否</option><option>是</option></select></label>
                       <label>是否服从调配<select value={application.accepts_transfer} onChange={(e) => updateApplication("accepts_transfer", e.target.value)}><option value="">请选择</option><option>是</option><option>否</option></select></label>
                     </div>
                   </section>
