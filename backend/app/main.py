@@ -10,13 +10,18 @@ from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .ai_mock import analyze_interview, extract_resume_profile, mask_email, mask_phone, parse_application_resume
-from .matching_agent import analyze_candidate_match
+from .matching_agent import analyze_candidate_match, summarize_final_report, summarize_interview_recording
+from .rag_index import build_job_rag_index
 from .storage import get_conn, init_db, row_to_dict, to_json
 
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
 
 app = FastAPI(title="AI Recruitment Demo")
 app.add_middleware(
@@ -54,6 +59,7 @@ class InterviewCreate(BaseModel):
     interview_time: str = ""
     transcript: str
     human_score: int
+    tags: list[str] = []
     final_result: str = "待定"
 
 
@@ -75,7 +81,19 @@ class JobCreate(BaseModel):
     description: str = ""
     responsibilities: str = ""
     requirements: str = ""
+    interview_rounds: int = 3
     status: str = "招聘中"
+
+
+class JobUpdate(BaseModel):
+    name: str | None = None
+    department: str | None = None
+    location: str | None = None
+    description: str | None = None
+    responsibilities: str | None = None
+    requirements: str | None = None
+    interview_rounds: int | None = None
+    status: str | None = None
 
 
 DEFAULT_JOBS = [
@@ -87,6 +105,7 @@ DEFAULT_JOBS = [
         "description": "面向客户需求提供售前解决方案支持。",
         "responsibilities": "负责客户沟通、需求分析、方案撰写与项目推进。",
         "requirements": "要求表达清晰、逻辑完整，具备客户意识和项目协同能力。",
+        "interview_rounds": 3,
         "status": "招聘中",
     },
     {
@@ -97,6 +116,7 @@ DEFAULT_JOBS = [
         "description": "负责招聘系统和内部数字化平台前端研发。",
         "responsibilities": "负责前端页面开发、组件抽象、接口联调和用户体验优化。",
         "requirements": "要求熟悉 React 或 Vue、组件化开发、工程化构建和接口联调。",
+        "interview_rounds": 2,
         "status": "招聘中",
     },
     {
@@ -107,6 +127,7 @@ DEFAULT_JOBS = [
         "description": "负责招聘运营数据分析和业务洞察。",
         "responsibilities": "负责招聘漏斗、候选人标签、转化效率分析和看板建设。",
         "requirements": "要求熟悉 SQL、数据看板、指标拆解和业务洞察。",
+        "interview_rounds": 2,
         "status": "招聘中",
     },
 ]
@@ -133,6 +154,7 @@ INTERVIEW_SLOTS = ["09:30", "10:30", "14:00", "15:30", "16:30"]
 def startup() -> None:
     init_db()
     seed_default_jobs()
+    build_job_rag_index(list_jobs_from_db(include_closed=True))
 
 
 def read_upload_text(file: UploadFile) -> str:
@@ -213,8 +235,8 @@ def seed_default_jobs() -> None:
             conn.execute(
                 """
                 INSERT INTO jobs (
-                    id, name, department, location, description, responsibilities, requirements, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    id, name, department, location, description, responsibilities, requirements, interview_rounds, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job["id"],
@@ -224,9 +246,11 @@ def seed_default_jobs() -> None:
                     job["description"],
                     job["responsibilities"],
                     job["requirements"],
+                    job.get("interview_rounds", 3),
                     job["status"],
                 ),
             )
+    build_job_rag_index(list_jobs_from_db(include_closed=True))
 
 
 def list_jobs_from_db(include_closed: bool = False) -> list[dict]:
@@ -240,11 +264,47 @@ def list_jobs_from_db(include_closed: bool = False) -> list[dict]:
         return [row_to_dict(row) for row in conn.execute(query, params).fetchall()]
 
 
-def current_schedule_week_start() -> date:
-    today = date.today()
-    if today.weekday() >= 5:
-        return today + timedelta(days=7 - today.weekday())
-    return today - timedelta(days=today.weekday())
+ROUND_LABELS = ["一", "二", "三", "四", "五"]
+ROUND_BY_LABEL = {label: index + 1 for index, label in enumerate(ROUND_LABELS)}
+
+
+def normalize_interview_rounds(value) -> int:
+    try:
+        rounds = int(value)
+    except (TypeError, ValueError):
+        rounds = 3
+    return max(1, min(5, rounds))
+
+
+def get_job_for_position(position: str) -> dict:
+    for job in list_jobs_from_db(include_closed=True):
+        if job.get("name") == position:
+            return job
+    return {"name": position, "interview_rounds": 3}
+
+
+def infer_interview_round(status: str, completed_count: int = 0) -> int:
+    for label, round_index in ROUND_BY_LABEL.items():
+        if f"{label}面" in (status or ""):
+            return round_index
+    return normalize_interview_rounds(completed_count + 1)
+
+
+def interview_feedback_status(current_status: str, total_rounds: int, completed_count: int = 0) -> str:
+    current_round = infer_interview_round(current_status, completed_count)
+    if current_round >= normalize_interview_rounds(total_rounds):
+        return "最终候选"
+    return f"{ROUND_LABELS[current_round - 1]}面结束"
+
+
+def next_business_days(count: int = 5) -> list[date]:
+    days = []
+    current = date.today()
+    while len(days) < count:
+        if current.weekday() < 5:
+            days.append(current)
+        current += timedelta(days=1)
+    return days
 
 
 def deterministic_busy(interviewer: str, day: date, slot: str) -> bool:
@@ -255,8 +315,9 @@ def deterministic_busy(interviewer: str, day: date, slot: str) -> bool:
 def get_interviewer_schedule(interviewer: str) -> dict:
     if interviewer not in INTERVIEWERS:
         raise HTTPException(status_code=404, detail="interviewer not found")
-    week_start = current_schedule_week_start()
-    week_end = week_start + timedelta(days=4)
+    business_days = next_business_days(5)
+    week_start = business_days[0]
+    week_end = business_days[-1]
     with get_conn() as conn:
         rows = conn.execute(
             """
@@ -272,8 +333,7 @@ def get_interviewer_schedule(interviewer: str) -> dict:
         ).fetchall()
     occupied = {row["interview_time"]: row["final_result"] or "已有面试" for row in rows if row["interview_time"]}
     days = []
-    for offset in range(5):
-        day = week_start + timedelta(days=offset)
+    for day in business_days:
         slots = []
         for slot in INTERVIEW_SLOTS:
             value = f"{day.isoformat()} {slot}"
@@ -290,7 +350,7 @@ def get_interviewer_schedule(interviewer: str) -> dict:
         days.append(
             {
                 "date": day.isoformat(),
-                "weekday": ["周一", "周二", "周三", "周四", "周五"][offset],
+                "weekday": ["周一", "周二", "周三", "周四", "周五"][day.weekday()],
                 "slots": slots,
             }
         )
@@ -334,8 +394,8 @@ async def create_job(payload: JobCreate):
         conn.execute(
             """
             INSERT INTO jobs (
-                id, name, department, location, description, responsibilities, requirements, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                id, name, department, location, description, responsibilities, requirements, interview_rounds, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job_id,
@@ -345,11 +405,64 @@ async def create_job(payload: JobCreate):
                 payload.description.strip(),
                 payload.responsibilities.strip(),
                 payload.requirements.strip(),
+                normalize_interview_rounds(payload.interview_rounds),
                 payload.status.strip() or "招聘中",
             ),
         )
         row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-        return row_to_dict(row)
+        item = row_to_dict(row)
+    index = build_job_rag_index(list_jobs_from_db(include_closed=True))
+    item["rag_index_built_at"] = index["built_at"]
+    item["rag_document_count"] = index["document_count"]
+    return item
+
+
+@app.patch("/api/jobs/{job_id}")
+async def update_job(job_id: str, payload: JobUpdate):
+    values = payload.dict(exclude_unset=True)
+    allowed = {"name", "department", "location", "description", "responsibilities", "requirements", "interview_rounds", "status"}
+    fields = [field for field in values if field in allowed]
+    if not fields:
+        raise HTTPException(status_code=400, detail="no valid fields")
+    if "name" in values and not str(values["name"]).strip():
+        raise HTTPException(status_code=400, detail="job name is required")
+    assignments = ", ".join(f"{field} = ?" for field in fields)
+    params = [
+        normalize_interview_rounds(values[field]) if field == "interview_rounds"
+        else str(values[field]).strip() if values[field] is not None else ""
+        for field in fields
+    ]
+    params.append(job_id)
+    with get_conn() as conn:
+        existing = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="job not found")
+        conn.execute(
+            f"UPDATE jobs SET {assignments}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            params,
+        )
+        row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        item = row_to_dict(row)
+    index = build_job_rag_index(list_jobs_from_db(include_closed=True))
+    item["rag_index_built_at"] = index["built_at"]
+    item["rag_document_count"] = index["document_count"]
+    return item
+
+
+@app.delete("/api/jobs/{job_id}")
+async def delete_job(job_id: str):
+    with get_conn() as conn:
+        existing = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="job not found")
+        conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+    index = build_job_rag_index(list_jobs_from_db(include_closed=True))
+    return {
+        "id": job_id,
+        "deleted": True,
+        "rag_index_built_at": index["built_at"],
+        "rag_document_count": index["document_count"],
+    }
 
 
 @app.get("/api/interviewers")
@@ -499,9 +612,30 @@ async def get_candidate(candidate_id: int):
         return item
 
 
+@app.get("/api/candidates/{candidate_id}/resume")
+async def get_candidate_resume(candidate_id: int):
+    with get_conn() as conn:
+        row = conn.execute("SELECT resume_filename, resume_path FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="candidate not found")
+        resume_path = row["resume_path"] or ""
+        resume_filename = row["resume_filename"] or Path(resume_path).name
+    if not resume_path:
+        raise HTTPException(status_code=404, detail="resume not found")
+    target = (ROOT_DIR / resume_path).resolve()
+    resume_root = (ROOT_DIR / "data" / "resumes").resolve()
+    if resume_root not in target.parents or not target.exists():
+        raise HTTPException(status_code=404, detail="resume not found")
+    return FileResponse(
+        target,
+        media_type="application/pdf" if target.suffix.lower() == ".pdf" else "application/octet-stream",
+        filename=resume_filename,
+    )
+
+
 @app.patch("/api/candidates/{candidate_id}")
 async def update_candidate(candidate_id: int, payload: dict):
-    allowed = {"status", "match_score", "summary", "screening_suggestion"}
+    allowed = {"position", "status", "match_score", "summary", "screening_suggestion"}
     fields = [key for key in payload if key in allowed]
     if not fields:
         raise HTTPException(status_code=400, detail="no valid fields")
@@ -517,14 +651,20 @@ async def update_candidate(candidate_id: int, payload: dict):
         return row_to_dict(row)
 
 
-def next_candidate_status(current: str) -> str:
+def next_candidate_status(current: str, total_rounds: int = 3) -> str:
+    total_rounds = normalize_interview_rounds(total_rounds)
+    for label, round_index in ROUND_BY_LABEL.items():
+        if current == f"{label}面结束":
+            next_round = round_index + 1
+            return f"{ROUND_LABELS[next_round - 1]}面待安排" if next_round <= total_rounds else "最终候选"
+        if current == f"{label}面待安排":
+            return f"{label}面中"
+        if current == f"{label}面中":
+            next_round = round_index + 1
+            return f"{ROUND_LABELS[next_round - 1]}面待安排" if next_round <= total_rounds else "最终候选"
     transitions = {
         "已投递": "一面待安排",
         "待初筛": "一面待安排",
-        "一面待安排": "一面中",
-        "一面中": "二面待安排",
-        "二面待安排": "二面中",
-        "二面中": "终面待安排",
         "待定": "一面待安排",
     }
     return transitions.get(current, "一面待安排")
@@ -539,7 +679,8 @@ async def advance_candidate(candidate_id: int, payload: CandidateAdvanceRequest)
         if not row:
             raise HTTPException(status_code=404, detail="candidate not found")
         candidate = row_to_dict(row)
-        next_status = next_candidate_status(candidate["status"])
+        job = get_job_for_position(candidate["position"])
+        next_status = next_candidate_status(candidate["status"], job.get("interview_rounds", 3))
         interview_time = payload.interview_time.strip()
         if not interview_time:
             raise HTTPException(status_code=400, detail="interview_time is required")
@@ -594,6 +735,32 @@ async def ai_analyze_interview(payload: InterviewCreate):
     return analyze_interview(payload.transcript, payload.human_score, candidate["position"])
 
 
+@app.post("/api/interviews/recording-summary")
+async def recording_summary(
+    candidate_id: int = Form(...),
+    file: UploadFile = File(...),
+):
+    raw = file.file.read()
+    suffix = Path(file.filename or "").suffix.lower()
+    transcript = ""
+    if suffix in {".txt", ".md", ".json", ".csv"} or (file.content_type or "").startswith("text/"):
+        transcript = raw.decode("utf-8", errors="ignore")
+    elif suffix in {".docx", ".pdf"}:
+        transcript = extract_upload_text(raw, file.filename or "")
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="candidate not found")
+        candidate = row_to_dict(row)
+    summary = summarize_interview_recording(transcript, candidate)
+    return {
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "transcript": transcript[:3000],
+        "summary": summary,
+    }
+
+
 @app.post("/api/interviews")
 async def create_interview(payload: InterviewCreate):
     with get_conn() as conn:
@@ -601,7 +768,16 @@ async def create_interview(payload: InterviewCreate):
         if not candidate_row:
             raise HTTPException(status_code=404, detail="candidate not found")
         candidate = row_to_dict(candidate_row)
+        if "面中" not in candidate["status"]:
+            raise HTTPException(status_code=400, detail="only interviewing candidates can submit interview feedback")
+        completed_count = conn.execute(
+            "SELECT COUNT(*) FROM interviews WHERE candidate_id = ? AND reason_category != ?",
+            (payload.candidate_id, "流程推进"),
+        ).fetchone()[0]
+        job = get_job_for_position(candidate["position"])
+        next_status = interview_feedback_status(candidate["status"], job.get("interview_rounds", 3), completed_count)
         ai_result = analyze_interview(payload.transcript, payload.human_score, candidate["position"])
+        interviewer_tags = [tag.strip() for tag in payload.tags if tag.strip()]
         cursor = conn.execute(
             """
             INSERT INTO interviews (
@@ -615,17 +791,17 @@ async def create_interview(payload: InterviewCreate):
                 payload.interview_time,
                 payload.transcript,
                 ai_result["ai_summary"],
-                to_json(ai_result["strengths"]),
+                to_json(interviewer_tags or ai_result["strengths"]),
                 to_json(ai_result["risks"]),
                 payload.human_score,
                 ai_result["ai_suggestion"],
-                payload.final_result,
+                next_status,
                 ai_result["reason_category"],
             ),
         )
         conn.execute(
-            "UPDATE candidates SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (payload.final_result, payload.candidate_id),
+            "UPDATE candidates SET status = ?, match_score = ?, tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (next_status, payload.human_score, to_json(interviewer_tags or candidate["tags"]), payload.candidate_id),
         )
         row = conn.execute("SELECT * FROM interviews WHERE id = ?", (cursor.lastrowid,)).fetchone()
         return row_to_dict(row)
@@ -666,34 +842,31 @@ async def position_report(position: str):
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT c.*, i.ai_summary, i.human_score, i.ai_suggestion, i.final_result
+            SELECT c.*, i.ai_summary, i.human_score, i.ai_suggestion, i.final_result, i.transcript
             FROM candidates c
             LEFT JOIN interviews i ON i.id = (
                 SELECT MAX(id) FROM interviews WHERE candidate_id = c.id
             )
             WHERE c.position = ?
+              AND c.status IN ('终面结束', '最终候选', '终面候选')
             ORDER BY COALESCE(i.human_score, c.match_score) DESC
-            LIMIT 10
             """,
             (position,),
         ).fetchall()
-    lines = [
-        f"# {position}最终候选人筛选报告",
-        "",
-        "| 排名 | 姓名 | 核心背景 | 面试表现摘要 | 优势标签 | 风险点 | 综合评分 | 建议 |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    for index, row in enumerate(rows, start=1):
+    candidates = []
+    for row in rows:
         item = row_to_dict(row)
-        score = item.get("human_score") or item.get("match_score") or 0
-        background = f"{item.get('education') or '待补充'}，{item.get('work_years') or '待补充'}"
-        summary = item.get("ai_summary") or item.get("summary") or "待补充面试记录"
-        lines.append(
-            f"| {index} | {item['name']} | {background} | {summary[:32]} | "
-            f"{'、'.join(item['tags'][:3])} | {'、'.join(item['risk_points'][:2])} | "
-            f"{score} | {item.get('ai_suggestion') or item.get('screening_suggestion') or '待定'} |"
+        candidates.append(
+            {
+                "name": item.get("name"),
+                "status": item.get("status"),
+                "score": item.get("human_score") or item.get("match_score") or 0,
+                "tags": item.get("tags", [])[:4],
+                "interview_summary": item.get("ai_summary") or item.get("transcript") or item.get("summary") or "",
+                "suggestion": item.get("ai_suggestion") or item.get("screening_suggestion") or "",
+            }
         )
-    return "\n".join(lines)
+    return summarize_final_report(position, candidates, 300)
 
 
 @app.post("/api/messages/group-copy")
@@ -811,3 +984,17 @@ async def export_candidates():
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=candidates.csv"},
     )
+
+
+if (FRONTEND_DIST / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/apply", include_in_schema=False)
+@app.get("/interviewer", include_in_schema=False)
+async def frontend_app():
+    index_path = FRONTEND_DIST / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="frontend is not built")
+    return FileResponse(index_path)

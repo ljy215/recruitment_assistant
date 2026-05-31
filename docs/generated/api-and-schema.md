@@ -6,6 +6,9 @@
 | --- | --- | --- |
 | `/api/resumes/upload` | POST | 上传简历并返回解析结果 |
 | `/api/jobs` | GET | 获取在招岗位列表 |
+| `/api/jobs` | POST | 新增岗位，并自动重建岗位 RAG 索引 |
+| `/api/jobs/{id}` | PATCH | 更新岗位内容，并自动重建岗位 RAG 索引 |
+| `/api/jobs/{id}` | DELETE | 删除岗位，并自动重建岗位 RAG 索引 |
 | `/api/applications` | POST | 面试者提交申请并创建候选人 |
 | `/api/ai/parse-resume` | POST | 根据文本和岗位 JD 解析候选人 |
 | `/api/candidates` | GET/POST | 查询或新增候选人 |
@@ -13,10 +16,14 @@
 | `/api/ai/analyze-interview` | POST | 分析面试纪要 |
 | `/api/interviews` | POST | 保存面试记录 |
 | `/api/dashboard/summary` | GET | 获取看板统计 |
-| `/api/reports/position/{position}` | GET | 生成岗位汇总 Markdown 报告 |
+| `/api/reports/position/{position}` | GET | 生成岗位终面候选人精简报告，不超过 300 字 |
 | `/api/messages/group-copy` | POST | 生成群同步文案 |
 | `/api/export/candidates` | GET | 导出候选人 CSV |
 | `/api/demo/seed` | POST | 生成 10 人演示数据 |
+
+## RAG 索引
+
+新增、更新、删除岗位后，后端会将全部岗位 JD 构建为 `data/job_rag_index.json`。简历匹配 Agent 会优先使用该索引召回岗位知识。
 
 ## 前端脚本
 
@@ -60,3 +67,16 @@
 | ai_suggestion | AI 建议 |
 | final_result | 最终状态 |
 | reason_category | 原因分类 |
+
+## jobs
+
+| 字段 | 说明 |
+| --- | --- |
+| id | 岗位 ID |
+| name | 岗位名称 |
+| department | 所属部门 |
+| location | 工作地点 |
+| responsibilities | 岗位职责 |
+| requirements | 岗位要求 |
+| interview_rounds | 面试轮次，默认 3 轮 |
+| status | 招聘状态 |

@@ -1,4 +1,6 @@
-const API_BASE = "http://127.0.0.1:8000";
+const isLocalDev = ["127.0.0.1", "localhost"].includes(window.location.hostname)
+  && ["5173", "5174"].includes(window.location.port);
+const API_BASE = window.__API_BASE__ || (isLocalDev ? "http://127.0.0.1:8000" : "");
 
 export const API_ORIGIN = API_BASE;
 
@@ -41,6 +43,20 @@ export async function createJob(payload) {
   });
 }
 
+export async function updateJob(jobId, payload) {
+  return request(`/api/jobs/${encodeURIComponent(jobId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteJob(jobId) {
+  return request(`/api/jobs/${encodeURIComponent(jobId)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function submitApplication(payload) {
   const form = new FormData();
   form.append("resume", payload.resume);
@@ -69,6 +85,10 @@ export async function listCandidates(position = "") {
   return request(`/api/candidates${query}`);
 }
 
+export async function getCandidate(candidateId) {
+  return request(`/api/candidates/${candidateId}`);
+}
+
 export async function createInterview(payload) {
   return request("/api/interviews", {
     method: "POST",
@@ -77,9 +97,24 @@ export async function createInterview(payload) {
   });
 }
 
+export async function summarizeRecording(candidateId, file) {
+  const form = new FormData();
+  form.append("candidate_id", Number(candidateId));
+  form.append("file", file);
+  return request("/api/interviews/recording-summary", { method: "POST", body: form });
+}
+
 export async function advanceCandidate(candidateId, payload) {
   return request(`/api/candidates/${candidateId}/advance`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateCandidate(candidateId, payload) {
+  return request(`/api/candidates/${candidateId}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });

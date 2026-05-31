@@ -6,8 +6,9 @@ import {
   advanceCandidate,
   createInterview,
   createJob,
+  deleteJob,
   dashboardSummary,
-  groupCopyMessage,
+  getCandidate,
   interviewerSchedule,
   listInterviewers,
   listJobs,
@@ -15,6 +16,9 @@ import {
   positionReport,
   seedDemoData,
   submitApplication,
+  summarizeRecording,
+  updateCandidate,
+  updateJob,
   uploadResume,
 } from "./api";
 import "./styles.css";
@@ -95,6 +99,135 @@ const EMPTY_REPEAT = {
 };
 const DEFAULT_INTERVIEWERS = ["张敏", "王磊", "陈晨", "刘洋"];
 
+function isInterviewingStatus(status = "") {
+  return String(status).includes("面中");
+}
+
+const APPLICATION_LABELS = {
+  name: "姓名",
+  phone: "电话",
+  email: "邮箱",
+  gender: "性别",
+  education: "最高学历",
+  school: "学校",
+  work_years: "工作年限",
+  major: "专业",
+  english_level: "英语水平",
+  self_review: "自我评价",
+};
+
+const EXPERIENCE_LABELS = {
+  education: "教育背景",
+  internship: "实习经历",
+  project: "项目经历",
+  campus: "校园经历",
+  certificate: "技能证书",
+  language: "语言能力",
+  award: "获奖经历",
+};
+
+const FIELD_LABELS = {
+  startYear: "开始年",
+  startMonth: "开始月",
+  endYear: "结束年",
+  endMonth: "结束月",
+  school: "学校",
+  major: "专业",
+  degree: "学历",
+  type: "类型",
+  ranking: "排名",
+  country: "国家/地区",
+  company: "公司",
+  role: "角色",
+  desc: "描述",
+  name: "名称",
+  date: "日期",
+  no: "编号",
+  org: "机构",
+  listen: "听说能力",
+  read: "读写能力",
+  level: "级别",
+};
+
+function formatPeriod(item = {}) {
+  const start = [item.startYear, item.startMonth].filter(Boolean).join(".");
+  const end = [item.endYear, item.endMonth].filter(Boolean).join(".");
+  if (start || end) return `${start || "待补充"} - ${end || "至今"}`;
+  return item.date || [item.year, item.month].filter(Boolean).join(".") || "";
+}
+
+function renderValue(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).join("、");
+  if (value && typeof value === "object") return Object.values(value).filter(Boolean).join(" / ");
+  return value || "";
+}
+
+function StructuredResume({ detail }) {
+  const applicationData = detail?.application_data || {};
+  const application = applicationData.application || applicationData || {};
+  const repeatForms = applicationData.repeat_forms || applicationData.repeatForms || {};
+  const filledApplication = Object.entries(APPLICATION_LABELS)
+    .map(([key, label]) => [label, renderValue(application[key])])
+    .filter(([, value]) => value);
+  const hasStructured = filledApplication.length || Object.values(repeatForms).some((items) => Array.isArray(items) && items.length);
+
+  if (!hasStructured) {
+    return (
+      <div className="resume-text-card">
+        <h3>简历文本</h3>
+        <p>{detail.resume_text || "暂无简历文本。"}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="structured-resume">
+      <section className="resume-section">
+        <h3>申请信息</h3>
+        <div className="info-list">
+          {filledApplication.map(([label, value]) => (
+            <div className="info-row" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
+      {Object.entries(EXPERIENCE_LABELS).map(([key, title]) => {
+        const items = Array.isArray(repeatForms[key]) ? repeatForms[key].filter((item) => Object.values(item || {}).some(Boolean)) : [];
+        if (!items.length) return null;
+        return (
+          <section className="resume-section" key={key}>
+            <h3>{title}</h3>
+            <div className="timeline-list">
+              {items.map((item, index) => {
+                const heading = item.school || item.company || item.name || item.role || `${title} ${index + 1}`;
+                const sub = item.major || item.degree || item.type || item.level || item.org || "";
+                const period = formatPeriod(item);
+                const details = Object.entries(item)
+                  .filter(([field, value]) => !["school", "company", "name", "role", "major", "degree", "type", "level", "org", "startYear", "startMonth", "endYear", "endMonth", "year", "month", "date"].includes(field) && renderValue(value))
+                  .map(([field, value]) => [FIELD_LABELS[field] || field, renderValue(value)]);
+                return (
+                  <article className="timeline-item" key={`${key}-${index}`}>
+                    <div>
+                      <strong>{heading}</strong>
+                      {sub && <span>{sub}</span>}
+                    </div>
+                    {period && <em>{period}</em>}
+                    {details.map(([label, value]) => (
+                      <p key={label}><b>{label}：</b>{value}</p>
+                    ))}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 function Chart({ title, data }) {
   const chartId = useMemo(() => `chart-${Math.random().toString(36).slice(2)}`, []);
 
@@ -116,8 +249,172 @@ function Chart({ title, data }) {
   return <div className="chart" id={chartId} />;
 }
 
+function InterviewerPage() {
+  const [candidates, setCandidates] = useState([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [detail, setDetail] = useState(null);
+  const [score, setScore] = useState(88);
+  const [tags, setTags] = useState("");
+  const [transcript, setTranscript] = useState("");
+  const [notice, setNotice] = useState("");
+  const [uploading, setUploading] = useState(false);
+
+  async function refreshInterviews() {
+    const items = (await listCandidates()).filter((item) => isInterviewingStatus(item.status));
+    setCandidates(items);
+    setSelectedId((current) => (items.some((item) => String(item.id) === current) ? current : String(items[0]?.id || "")));
+    return items;
+  }
+
+  useEffect(() => {
+    refreshInterviews().catch((error) => setNotice(error.message));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setDetail(null);
+      return;
+    }
+    getCandidate(selectedId)
+      .then((item) => {
+        setDetail(item);
+        const draft = JSON.parse(localStorage.getItem(`interview-draft-${item.id}`) || "{}");
+        setScore(draft.score ?? item.match_score ?? 88);
+        setTags(draft.tags ?? (item.tags || []).join("、"));
+        setTranscript(draft.transcript ?? item.interviews?.[0]?.transcript ?? "");
+      })
+      .catch((error) => setNotice(error.message));
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    localStorage.setItem(`interview-draft-${selectedId}`, JSON.stringify({ score, tags, transcript }));
+  }, [score, selectedId, tags, transcript]);
+
+  async function handleRecording(file) {
+    if (!file || !selectedId) return;
+    setUploading(true);
+    try {
+      const result = await summarizeRecording(selectedId, file);
+      setTranscript(result.summary || result.transcript || "");
+      setNotice("录音/纪要已解析并精炼");
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!detail) return setNotice("请先选择面试候选人");
+    const tagItems = tags.split(/[、,\n]/).map((item) => item.trim()).filter(Boolean);
+    const result = await createInterview({
+      candidate_id: Number(detail.id),
+      interviewer: "面试官",
+      transcript,
+      human_score: Number(score),
+      tags: tagItems,
+    });
+    localStorage.setItem(`interview-draft-${detail.id}`, JSON.stringify({ score, tags, transcript, saved: true }));
+    setNotice(`面试反馈已保存，候选人状态更新为${result.final_result}`);
+    await refreshInterviews();
+  }
+
+  const resumeUrl = detail?.resume_path ? `${API_ORIGIN}/api/candidates/${detail.id}/resume` : "";
+  const hasPdfResume = Boolean(resumeUrl && /\.pdf($|\?)/i.test(detail?.resume_filename || detail?.resume_path || ""));
+
+  return (
+    <main className="interviewer-page">
+      <section className="interviewer-shell">
+        <header className="interviewer-header">
+          <div>
+            <h1>面试官工作台</h1>
+            <p>查看候选人信息、简历预览、录音精炼并提交面试反馈。</p>
+          </div>
+          <a href="/">返回 HR 后台</a>
+        </header>
+        {notice && <div className="notice">{notice}</div>}
+        <div className="interviewer-layout">
+          <section className="interviewer-card">
+            <h2>面试人员</h2>
+            <div className="interviewer-list">
+              {candidates.map((item) => (
+                <button
+                  type="button"
+                  className={String(item.id) === selectedId ? "active" : ""}
+                  onClick={() => setSelectedId(String(item.id))}
+                  key={item.id}
+                >
+                  <strong>{item.name}</strong>
+                  <span>{item.position} · {item.status}</span>
+                </button>
+              ))}
+              {!candidates.length && <p className="empty-note">暂无面试中的候选人。</p>}
+            </div>
+          </section>
+
+          <section className="interviewer-card resume-preview">
+            <h2>候选人信息与简历预览</h2>
+            {detail ? (
+              <>
+                <div className="profile-grid">
+                  <span>姓名<strong>{detail.name}</strong></span>
+                  <span>岗位<strong>{detail.position}</strong></span>
+                  <span>学历<strong>{detail.education || "待补充"}</strong></span>
+                  <span>学校<strong>{detail.school || "待补充"}</strong></span>
+                  <span>状态<strong>{detail.status}</strong></span>
+                  <span>当前评分<strong>{detail.match_score}</strong></span>
+                </div>
+                {hasPdfResume ? (
+                  <div className="pdf-resume-panel">
+                    <div className="resume-toolbar">
+                      <strong>{detail.resume_filename || "PDF 简历"}</strong>
+                      <a href={resumeUrl} target="_blank" rel="noreferrer">新窗口打开</a>
+                    </div>
+                    <iframe title={`${detail.name} 简历`} src={resumeUrl} />
+                  </div>
+                ) : (
+                  <StructuredResume detail={detail} />
+                )}
+              </>
+            ) : (
+              <p className="empty-note">请选择面试人员。</p>
+            )}
+          </section>
+
+          {detail && (
+            <form className="interviewer-card interviewer-feedback" onSubmit={handleSubmit}>
+              <h2>面试反馈</h2>
+              <label>
+                上传录音/纪要
+                <input type="file" accept="audio/*,.txt,.md,.docx,.pdf" onChange={(event) => handleRecording(event.target.files?.[0])} />
+              </label>
+              {uploading && <p className="hint">正在解析并精炼...</p>}
+              <label>
+                面试评分
+                <input type="number" min="0" max="100" value={score} onChange={(event) => setScore(event.target.value)} />
+              </label>
+              <label>
+                添加标签
+                <textarea value={tags} onChange={(event) => setTags(event.target.value)} placeholder="例如：表达清晰、项目经验匹配、风险需复核" />
+              </label>
+              <label>
+                精炼纪要
+                <textarea value={transcript} onChange={(event) => setTranscript(event.target.value)} placeholder="上传录音/纪要后自动填充，也可手动填写。" />
+              </label>
+              <button type="submit">保存并结束本轮面试</button>
+            </form>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function App() {
   const isApplyEntry = window.location.pathname === "/apply";
+  const isInterviewerEntry = window.location.pathname === "/interviewer";
   const [tab, setTab] = useState("jobs");
   const [candidates, setCandidates] = useState([]);
   const [jobs, setJobs] = useState([]);
@@ -131,7 +428,10 @@ function App() {
     description: "",
     responsibilities: "",
     requirements: "",
+    interview_rounds: 3,
+    status: "招聘中",
   });
+  const [editingJobId, setEditingJobId] = useState("");
   const [application, setApplication] = useState({
     intended_position: "售前解决方案顾问",
     intended_city: "",
@@ -208,14 +508,27 @@ function App() {
   const [selectedId, setSelectedId] = useState("");
   const [transcript, setTranscript] = useState("候选人表达清晰，能结合项目经验说明客户需求分析和方案落地过程。技术细节回答较完整。");
   const [score, setScore] = useState(88);
+  const [interviewTags, setInterviewTags] = useState("表达清晰、技术扎实、项目经验匹配");
   const [dashboard, setDashboard] = useState(null);
   const [report, setReport] = useState("");
-  const [message, setMessage] = useState("");
+  const [reportPosition, setReportPosition] = useState("");
   const [notice, setNotice] = useState("");
   const [advanceTarget, setAdvanceTarget] = useState(null);
+  const [transferTarget, setTransferTarget] = useState(null);
+  const [actionMenuOpenId, setActionMenuOpenId] = useState(null);
   const [interviewers, setInterviewers] = useState(DEFAULT_INTERVIEWERS);
   const [schedule, setSchedule] = useState(null);
   const [advanceForm, setAdvanceForm] = useState({ interviewer: DEFAULT_INTERVIEWERS[0], interview_time: "", note: "" });
+  const [transferForm, setTransferForm] = useState({ job_id: "", note: "" });
+  const [candidateColumnWidths, setCandidateColumnWidths] = useState({
+    name: 120,
+    position: 170,
+    status: 110,
+    score: 80,
+    tags: 260,
+    suggestion: 380,
+    action: 170,
+  });
 
   async function refresh(positionOverride = candidateFilter) {
     const items = await listCandidates(positionOverride);
@@ -233,6 +546,7 @@ function App() {
         setJobs(items);
         if (items[0]) {
           setApplication((current) => ({ ...current, intended_position: items[0].name }));
+          setReportPosition((current) => current || items[0].name);
         }
       })
       .then(() => refresh())
@@ -317,10 +631,48 @@ function App() {
     return items.some((item) => Object.values(item).some(isFilled));
   }
 
+  const interviewCandidates = useMemo(
+    () => candidates.filter((item) => isInterviewingStatus(item.status)),
+    [candidates]
+  );
+  const selectedInterviewCandidate = interviewCandidates.find((item) => String(item.id) === selectedId) || interviewCandidates[0];
+
+  function startColumnResize(key, event, direction = 1) {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = candidateColumnWidths[key];
+    function onMove(moveEvent) {
+      const minWidth = key === "action" ? 120 : 72;
+      const nextWidth = Math.max(minWidth, startWidth + (moveEvent.clientX - startX) * direction);
+      setCandidateColumnWidths((current) => ({ ...current, [key]: nextWidth }));
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function ResizableTh({ columnKey, children, className = "" }) {
+    const isAction = columnKey === "action";
+    const resizeFromLeft = isAction || columnKey === "suggestion";
+    return (
+      <th className={`resizable-th ${className}`} style={{ width: candidateColumnWidths[columnKey] }}>
+        <span>{children}</span>
+        <i
+          className={`resize-handle ${resizeFromLeft ? "resize-handle-left" : ""}`}
+          onMouseDown={(event) => startColumnResize(columnKey, event, resizeFromLeft ? -1 : 1)}
+        />
+      </th>
+    );
+  }
+
   async function handleCreateJob(event) {
     event.preventDefault();
     if (!jobForm.name.trim()) return setNotice("请填写岗位名称");
-    await createJob(jobForm);
+    const saved = editingJobId ? await updateJob(editingJobId, jobForm) : await createJob(jobForm);
     const items = await listJobs();
     setJobs(items);
     setJobForm({
@@ -330,45 +682,85 @@ function App() {
       description: "",
       responsibilities: "",
       requirements: "",
+      interview_rounds: 3,
+      status: "招聘中",
     });
-    setNotice("岗位已新增，可在投递页选择该岗位");
+    setEditingJobId("");
+    setNotice(`岗位已${editingJobId ? "更新" : "新增"}，RAG 知识库已构建（${saved.rag_document_count || items.length} 个岗位文档）`);
+  }
+
+  function startEditJob(job) {
+    setEditingJobId(job.id);
+    setJobForm({
+      name: job.name || "",
+      department: job.department || "",
+      location: job.location || "",
+      description: job.description || "",
+      responsibilities: job.responsibilities || "",
+      requirements: job.requirements || "",
+      interview_rounds: job.interview_rounds || 3,
+      status: job.status || "招聘中",
+    });
+    setNotice(`正在编辑岗位：${job.name}`);
+  }
+
+  function cancelEditJob() {
+    setEditingJobId("");
+    setJobForm({
+      name: "",
+      department: "",
+      location: "",
+      description: "",
+      responsibilities: "",
+      requirements: "",
+      interview_rounds: 3,
+      status: "招聘中",
+    });
+  }
+
+  async function handleDeleteJob(job) {
+    if (!window.confirm(`确认删除岗位「${job.name}」吗？删除后会同步更新 RAG 知识库。`)) return;
+    const result = await deleteJob(job.id);
+    const items = await listJobs();
+    setJobs(items);
+    if (editingJobId === job.id) cancelEditJob();
+    setNotice(`岗位已删除，RAG 知识库已构建（${result.rag_document_count || items.length} 个岗位文档）`);
   }
 
   async function handleInterview(event) {
     event.preventDefault();
-    if (!selectedId) return setNotice("请先选择候选人");
-    await createInterview({
-      candidate_id: Number(selectedId),
+    if (!selectedInterviewCandidate) return setNotice("只有一面中、二面中、三面中的候选人才可以填写面试反馈");
+    const tags = interviewTags.split(/[、,\n]/).map((item) => item.trim()).filter(Boolean);
+    const result = await createInterview({
+      candidate_id: Number(selectedInterviewCandidate.id),
       transcript,
       human_score: Number(score),
-      final_result: Number(score) >= 85 ? "终面候选" : Number(score) >= 75 ? "待定" : "不通过",
+      tags,
     });
     await refresh();
-    setNotice("面试记录已保存");
+    setNotice(`面试反馈已保存，候选人评分和标签已更新，状态为${result.final_result}`);
   }
 
   async function handleReport() {
-    const selected = candidates.find((item) => String(item.id) === selectedId) || candidates[0];
-    if (!selected) return setNotice("暂无候选人");
-    setReport(await positionReport(selected.position));
+    if (!reportPosition) return setNotice("请先选择岗位");
+    const content = await positionReport(reportPosition);
+    setReport(content);
+    setNotice("岗位终面报告已生成");
   }
 
-  async function handleMessage() {
-    if (!selectedId) return setNotice("请先选择候选人");
-    const result = await groupCopyMessage(selectedId, "请用人部门确认是否推进下一轮");
-    setMessage(result.content);
-    await navigator.clipboard?.writeText(result.content);
-    setNotice("群同步文案已生成，支持复制到企业微信群");
-  }
-
-  function nextStatusLabel(status) {
+  function nextStatusLabel(status, position = "") {
+    const roundLabels = ["一", "二", "三", "四", "五"];
+    const totalRounds = Number(getJobByName(position)?.interview_rounds || 3);
+    for (let index = 0; index < roundLabels.length; index += 1) {
+      const label = roundLabels[index];
+      if (status === `${label}面结束` || status === `${label}面中`) {
+        return index + 1 >= totalRounds ? "成为最终候选" : `进入${roundLabels[index + 1]}面`;
+      }
+      if (status === `${label}面待安排`) return `开始${label}面`;
+    }
     const transitions = {
       已投递: "进入一面",
       待初筛: "进入一面",
-      一面待安排: "开始一面",
-      一面中: "进入二面",
-      二面待安排: "开始二面",
-      二面中: "进入终面",
       待定: "进入一面",
     };
     return transitions[status] || "进入一面";
@@ -376,12 +768,58 @@ function App() {
 
   function openAdvanceModal(candidate) {
     setAdvanceTarget(candidate);
+    setActionMenuOpenId(null);
     const interviewer = interviewers[0] || DEFAULT_INTERVIEWERS[0];
     setAdvanceForm({
       interviewer,
       interview_time: "",
-      note: `${candidate.name} 当前状态为${candidate.status}，下一步：${nextStatusLabel(candidate.status)}。`,
+      note: `${candidate.name} 当前状态为${candidate.status}，下一步：${nextStatusLabel(candidate.status, candidate.position)}。`,
     });
+  }
+
+  function toggleActionMenu(candidateId, event) {
+    event.stopPropagation();
+    setActionMenuOpenId((current) => (current === candidateId ? null : candidateId));
+  }
+
+  function openTransferModal(candidate, event) {
+    event.stopPropagation();
+    const targetJob = jobs.find((job) => job.name !== candidate.position) || jobs[0];
+    setActionMenuOpenId(null);
+    setTransferTarget(candidate);
+    setTransferForm({
+      job_id: targetJob?.id || "",
+      note: targetJob ? `建议推送至${targetJob.department || "其他部门"}的${targetJob.name}。` : "",
+    });
+  }
+
+  async function handleCandidateStatusAction(candidate, status, event) {
+    event.stopPropagation();
+    setActionMenuOpenId(null);
+    const updated = await updateCandidate(candidate.id, { status });
+    setSelectedId(String(updated.id));
+    await refresh();
+    setNotice(`${updated.name} 状态已更新为${status}`);
+  }
+
+  async function handleTransferSubmit(event) {
+    event.preventDefault();
+    if (!transferTarget) return;
+    const targetJob = jobs.find((job) => job.id === transferForm.job_id);
+    if (!targetJob) return setNotice("请选择要推送的目标部门/岗位");
+    const suggestion = [
+      `推送至其他部门：建议推送至${targetJob.department || "其他部门"} - ${targetJob.name}。`,
+      transferForm.note,
+    ].filter(Boolean).join(" ");
+    const updated = await updateCandidate(transferTarget.id, {
+      position: targetJob.name,
+      status: "推送至其他部门",
+      screening_suggestion: suggestion,
+    });
+    setTransferTarget(null);
+    setSelectedId(String(updated.id));
+    await refresh("");
+    setNotice(`${updated.name} 已推送至${targetJob.department || "其他部门"} - ${targetJob.name}`);
   }
 
   useEffect(() => {
@@ -728,13 +1166,17 @@ function App() {
     );
   }
 
+  if (isInterviewerEntry) {
+    return <InterviewerPage />;
+  }
+
   return (
     <main>
       <aside>
         <h1>AI 招聘提效</h1>
         {["jobs", "candidates", "interview", "dashboard", "report"].map((key) => (
           <button className={tab === key ? "active" : ""} key={key} onClick={() => setTab(key)}>
-            {({ jobs: "岗位管理", candidates: "候选人", interview: "面试反馈", dashboard: "数据看板", report: "报告同步" })[key]}
+            {({ jobs: "岗位管理", candidates: "候选人", interview: "面试反馈", dashboard: "数据看板", report: "报告生成" })[key]}
           </button>
         ))}
       </aside>
@@ -762,6 +1204,24 @@ function App() {
                 岗位概述
                 <input value={jobForm.description} onChange={(e) => updateJobForm("description", e.target.value)} placeholder="一句话说明岗位定位" />
               </label>
+              <label>
+                招聘状态
+                <select value={jobForm.status} onChange={(e) => updateJobForm("status", e.target.value)}>
+                  <option>招聘中</option>
+                  <option>暂停招聘</option>
+                  <option>已关闭</option>
+                </select>
+              </label>
+              <label>
+                面试轮次
+                <input
+                  type="number"
+                  min="1"
+                  max="5"
+                  value={jobForm.interview_rounds}
+                  onChange={(e) => updateJobForm("interview_rounds", Number(e.target.value))}
+                />
+              </label>
               <label className="wide">
                 岗位职责
                 <textarea value={jobForm.responsibilities} onChange={(e) => updateJobForm("responsibilities", e.target.value)} placeholder="填写该岗位日常负责事项、产出和协作对象" />
@@ -770,11 +1230,14 @@ function App() {
                 岗位要求
                 <textarea value={jobForm.requirements} onChange={(e) => updateJobForm("requirements", e.target.value)} placeholder="填写技能、经验、学历、能力等要求" />
               </label>
-              <button type="submit">新增岗位</button>
+              <div className="form-actions">
+                <button type="submit">{editingJobId ? "保存更新" : "新增岗位"}</button>
+                {editingJobId && <button type="button" className="secondary" onClick={cancelEditJob}>取消编辑</button>}
+              </div>
             </form>
             <table>
               <thead>
-                <tr><th>岗位</th><th>部门</th><th>地点</th><th>状态</th><th>岗位要求</th></tr>
+                <tr><th>岗位</th><th>部门</th><th>地点</th><th>轮次</th><th>状态</th><th>岗位要求</th><th>操作</th></tr>
               </thead>
               <tbody>
                 {jobs.map((job) => (
@@ -782,8 +1245,15 @@ function App() {
                     <td>{job.name}</td>
                     <td>{job.department || "待补充"}</td>
                     <td>{job.location || "待补充"}</td>
+                    <td>{job.interview_rounds || 3} 轮</td>
                     <td>{job.status}</td>
                     <td>{job.requirements || job.description || "待补充"}</td>
+                    <td>
+                      <div className="row-actions">
+                        <button type="button" onClick={() => startEditJob(job)}>编辑</button>
+                        <button type="button" className="secondary danger" onClick={() => handleDeleteJob(job)}>删除</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -810,8 +1280,21 @@ function App() {
             </div>
             <div className="table-scroll">
               <table className="candidate-table">
+                <colgroup>
+                  {["name", "position", "status", "score", "tags", "suggestion", "action"].map((key) => (
+                    <col key={key} style={{ width: candidateColumnWidths[key] }} />
+                  ))}
+                </colgroup>
                 <thead>
-                  <tr><th className="col-name">姓名</th><th className="col-position">岗位</th><th className="col-status">状态</th><th className="col-score">评分</th><th className="col-tags">标签</th><th className="col-suggestion">AI 初筛建议</th><th className="col-action">操作</th></tr>
+                  <tr>
+                    <ResizableTh columnKey="name">姓名</ResizableTh>
+                    <ResizableTh columnKey="position">岗位</ResizableTh>
+                    <ResizableTh columnKey="status">状态</ResizableTh>
+                    <ResizableTh columnKey="score">评分</ResizableTh>
+                    <ResizableTh columnKey="tags">标签</ResizableTh>
+                    <ResizableTh columnKey="suggestion">AI 初筛建议</ResizableTh>
+                    <ResizableTh columnKey="action" className="sticky-action">操作</ResizableTh>
+                  </tr>
                 </thead>
                 <tbody>
                   {candidates.map((item) => (
@@ -822,10 +1305,26 @@ function App() {
                       <td>{item.match_score}</td>
                       <td>{item.tags.join("、")}</td>
                       <td className="suggestion-cell">{item.screening_suggestion || "待 AI 初筛"}</td>
-                      <td className="action-cell">
-                        <button type="button" onClick={(event) => { event.stopPropagation(); openAdvanceModal(item); }}>
-                          推进下一步
-                        </button>
+                      <td className={`action-cell sticky-action ${actionMenuOpenId === item.id ? "menu-open" : ""}`}>
+                        <div className="split-action">
+                          <button type="button" className="split-action-main" onClick={(event) => { event.stopPropagation(); openAdvanceModal(item); }}>
+                            推进下一步
+                          </button>
+                          <button
+                            type="button"
+                            className="split-action-arrow"
+                            aria-label={`${item.name} 更多操作`}
+                            onClick={(event) => toggleActionMenu(item.id, event)}
+                          >
+                            ▾
+                          </button>
+                          {actionMenuOpenId === item.id && (
+                            <div className="split-action-menu">
+                              <button type="button" onClick={(event) => openTransferModal(item, event)}>推送至其他部门</button>
+                              <button type="button" onClick={(event) => handleCandidateStatusAction(item, "流程结束", event)}>流程结束</button>
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -836,25 +1335,77 @@ function App() {
         )}
 
         {tab === "interview" && (
-          <div className="panel">
+          <div className="panel interview-panel">
             <h2>面试反馈</h2>
-            <form onSubmit={handleInterview} className="grid">
-              <label>
-                候选人
-                <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
-                  {candidates.map((item) => <option value={item.id} key={item.id}>{item.name} - {item.position}</option>)}
-                </select>
-              </label>
-              <label>
-                面试官评分
-                <input type="number" min="0" max="100" value={score} onChange={(e) => setScore(e.target.value)} />
-              </label>
-              <label className="wide">
-                腾讯会议纪要
-                <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} />
-              </label>
-              <button type="submit">保存面试分析</button>
-            </form>
+            <div className="interview-workbench">
+              <div className="interview-list">
+                <div className="actions">
+                  <label className="inline-filter">
+                    在招岗位
+                    <select value={candidateFilter} onChange={(event) => setCandidateFilter(event.target.value)}>
+                      <option value="">全部岗位</option>
+                      {jobs.map((job) => (
+                        <option value={job.name} key={job.id}>{job.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="table-scroll">
+                  <table className="interview-table">
+                    <thead>
+                      <tr><th>姓名</th><th>岗位</th><th>状态</th><th>当前评分</th><th>标签</th></tr>
+                    </thead>
+                    <tbody>
+                      {interviewCandidates.map((item) => (
+                        <tr key={item.id} onClick={() => setSelectedId(String(item.id))} className={String(item.id) === selectedId ? "selected" : ""}>
+                          <td>{item.name}</td>
+                          <td>{item.position}</td>
+                          <td>{item.status}</td>
+                          <td>{item.match_score}</td>
+                          <td>{item.tags.join("、") || "待填写"}</td>
+                        </tr>
+                      ))}
+                      {!interviewCandidates.length && (
+                        <tr>
+                          <td colSpan="5" className="empty-cell">暂无面试中的候选人，请先在候选人页推进到一面中、二面中或三面中。</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              {selectedInterviewCandidate && (
+                <form onSubmit={handleInterview} className="interview-form">
+                  <div className="form-summary">
+                    <span>当前候选人</span>
+                    <strong>{`${selectedInterviewCandidate.name} - ${selectedInterviewCandidate.position}`}</strong>
+                  </div>
+                  <label>
+                    候选人
+                    <select value={String(selectedInterviewCandidate.id)} onChange={(e) => setSelectedId(e.target.value)}>
+                      {interviewCandidates.map((item) => <option value={item.id} key={item.id}>{item.name} - {item.position}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    面试官评分
+                    <input type="number" min="0" max="100" value={score} onChange={(e) => setScore(e.target.value)} />
+                  </label>
+                  <label>
+                    面试官标签
+                    <textarea
+                      value={interviewTags}
+                      onChange={(e) => setInterviewTags(e.target.value)}
+                      placeholder="例如：表达清晰、技术扎实、项目经验匹配"
+                    />
+                  </label>
+                  <label>
+                    腾讯会议纪要
+                    <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} />
+                  </label>
+                  <button type="submit">保存面试反馈</button>
+                </form>
+              )}
+            </div>
           </div>
         )}
 
@@ -876,14 +1427,19 @@ function App() {
 
         {tab === "report" && (
           <div className="panel">
-            <h2>岗位报告与群同步</h2>
+            <h2>岗位终面报告</h2>
             <div className="actions">
-              <button onClick={handleSeedDemo}>生成 10 人演示数据</button>
-              <button onClick={handleReport}>生成岗位 Markdown 报告</button>
-              <button onClick={handleMessage}>生成群同步文案</button>
+              <label className="inline-filter">
+                选择岗位
+                <select value={reportPosition} onChange={(event) => setReportPosition(event.target.value)}>
+                  {jobs.map((job) => (
+                    <option value={job.name} key={job.id}>{job.name}</option>
+                  ))}
+                </select>
+              </label>
+              <button onClick={handleReport}>生成报告</button>
             </div>
             {report && <textarea className="output" value={report} readOnly />}
-            {message && <textarea className="output small" value={message} readOnly />}
           </div>
         )}
       </section>
@@ -892,7 +1448,7 @@ function App() {
           <div className="modal" onClick={(event) => event.stopPropagation()}>
             <h2>推进下一步</h2>
             <p className="modal-copy">
-              {advanceTarget.name} 当前状态为 <strong>{advanceTarget.status}</strong>，下一步将{nextStatusLabel(advanceTarget.status)}。
+              {advanceTarget.name} 当前状态为 <strong>{advanceTarget.status}</strong>，下一步将{nextStatusLabel(advanceTarget.status, advanceTarget.position)}。
             </p>
             <form onSubmit={handleAdvanceSubmit} className="grid">
               <label>
@@ -937,6 +1493,47 @@ function App() {
               <div className="modal-actions">
                 <button type="button" className="secondary" onClick={() => setAdvanceTarget(null)}>取消</button>
                 <button type="submit">确认推进</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {transferTarget && (
+        <div className="modal-backdrop" onClick={() => setTransferTarget(null)}>
+          <div className="modal small-modal" onClick={(event) => event.stopPropagation()}>
+            <h2>推送至其他部门</h2>
+            <p className="modal-copy">
+              {transferTarget.name} 当前投递岗位为 <strong>{transferTarget.position}</strong>，请选择要推送的目标部门/岗位。
+            </p>
+            <form onSubmit={handleTransferSubmit} className="grid">
+              <label className="wide">
+                目标部门/岗位
+                <select
+                  value={transferForm.job_id}
+                  onChange={(event) => {
+                    const targetJob = jobs.find((job) => job.id === event.target.value);
+                    setTransferForm((current) => ({
+                      ...current,
+                      job_id: event.target.value,
+                      note: targetJob ? `建议推送至${targetJob.department || "其他部门"}的${targetJob.name}。` : current.note,
+                    }));
+                  }}
+                >
+                  <option value="">请选择目标部门/岗位</option>
+                  {jobs.map((job) => (
+                    <option value={job.id} key={job.id}>
+                      {(job.department || "其他部门")} - {job.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wide">
+                推送备注
+                <textarea value={transferForm.note} onChange={(event) => setTransferForm((current) => ({ ...current, note: event.target.value }))} />
+              </label>
+              <div className="modal-actions">
+                <button type="button" className="secondary" onClick={() => setTransferTarget(null)}>取消</button>
+                <button type="submit">确认推送</button>
               </div>
             </form>
           </div>

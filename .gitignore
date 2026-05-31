@@ -17,6 +17,8 @@ frontend/dist/
 data/
 *.db
 *.sqlite
+*.pdf
+.deploy/
 
 # IDE / tooling
 .idea/

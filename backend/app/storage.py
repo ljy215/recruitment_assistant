@@ -63,6 +63,7 @@ def init_db() -> None:
                 description TEXT,
                 responsibilities TEXT,
                 requirements TEXT,
+                interview_rounds INTEGER NOT NULL DEFAULT 3,
                 status TEXT NOT NULL DEFAULT '招聘中',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -73,6 +74,7 @@ def init_db() -> None:
         ensure_column(conn, "candidates", "resume_path", "TEXT")
         ensure_column(conn, "candidates", "resume_text", "TEXT")
         ensure_column(conn, "candidates", "application_data", "TEXT")
+        ensure_column(conn, "jobs", "interview_rounds", "INTEGER NOT NULL DEFAULT 3")
 
 
 def ensure_column(conn: sqlite3.Connection, table: str, column: str, column_type: str) -> None:

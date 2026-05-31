@@ -3,6 +3,8 @@ import os
 import re
 from typing import Any
 
+from .rag_index import load_job_rag_index
+
 
 def load_local_env() -> None:
     env_path = os.path.join(os.getcwd(), ".env")
@@ -90,6 +92,37 @@ def retrieve_job_knowledge(
     candidate: dict[str, Any],
     limit: int = 4,
 ) -> list[dict[str, Any]]:
+    index = load_job_rag_index()
+    if index and index.get("documents"):
+        jobs_by_id = {job.get("id"): job for job in jobs}
+        jobs_by_name = {job.get("name"): job for job in jobs}
+        query_terms = {str(item).lower() for item in candidate.get("skills") or []}
+        query_text = (
+            json.dumps(candidate.get("structured_info") or {}, ensure_ascii=False)
+            + "\n"
+            + candidate.get("resume_excerpt", "")
+        ).lower()
+        scored_index: list[tuple[int, dict[str, Any]]] = []
+        for document in index["documents"]:
+            score = 0
+            if document.get("id") == selected_job.get("id") or document.get("name") == selected_job.get("name"):
+                score += 100
+            tokens = {str(token).lower() for token in document.get("tokens") or []}
+            text = str(document.get("text") or "").lower()
+            score += len(query_terms & tokens) * 12
+            for token in ["ai", "agent", "rag", "python", "react", "vue", "sql", "数据", "客户", "方案"]:
+                if token in query_text and token in text:
+                    score += 5
+            scored_index.append((score, document))
+        scored_index.sort(key=lambda item: item[0], reverse=True)
+        retrieved_jobs = []
+        for _, document in scored_index[:limit]:
+            job = jobs_by_id.get(document.get("id")) or jobs_by_name.get(document.get("name"))
+            if job:
+                retrieved_jobs.append(job)
+        if retrieved_jobs:
+            return retrieved_jobs
+
     query_terms = set(candidate.get("skills") or [])
     query_text = json.dumps(candidate.get("structured_info") or {}, ensure_ascii=False) + "\n" + candidate.get("resume_excerpt", "")
     scored: list[tuple[int, dict[str, Any]]] = []
@@ -281,3 +314,110 @@ def analyze_candidate_match(
         langchain_match_agent(resume_text, position, jobs, job_description, candidate_info)
         or local_match_agent(resume_text, position, jobs, job_description, candidate_info)
     )
+
+
+def compact_text(text: str, limit: int = 300) -> str:
+    compact = re.sub(r"\s+", " ", text or "").strip()
+    return compact[:limit]
+
+
+def local_final_report(position: str, candidates: list[dict[str, Any]], limit: int = 300) -> str:
+    if not candidates:
+        return f"{position}暂无终面结束候选人。"
+    parts = [f"{position}终面报告：共{len(candidates)}人。"]
+    for item in candidates[:5]:
+        tags = "、".join(item.get("tags", [])[:2]) or "表现待补充"
+        score = item.get("human_score") or item.get("match_score") or 0
+        summary = item.get("ai_summary") or item.get("summary") or ""
+        parts.append(f"{item.get('name')}({score}分)：{tags}，{summary[:28]}")
+    return compact_text(" ".join(parts), limit)
+
+
+def summarize_final_report(position: str, candidates: list[dict[str, Any]], limit: int = 300) -> str:
+    if not candidates:
+        return f"{position}暂无终面结束候选人。"
+    if not (LLM_BASE_URL and LLM_API_KEY and LLM_MODEL):
+        return local_final_report(position, candidates, limit)
+    try:
+        from langchain_core.prompts import ChatPromptTemplate
+        from langchain_openai import ChatOpenAI
+    except ImportError:
+        return local_final_report(position, candidates, limit)
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "你是HR终面报告助手。请基于候选人终面信息生成中文Markdown简报，必须简洁、只保留关键信息，总字数不超过300字。不要编造信息。",
+            ),
+            (
+                "human",
+                "岗位：{position}\n候选人终面信息：{candidates}\n输出结构：标题、候选人要点、整体建议。",
+            ),
+        ]
+    )
+    model = ChatOpenAI(
+        model=LLM_MODEL,
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
+        temperature=0.2,
+    )
+    try:
+        message = (prompt | model).invoke(
+            {
+                "position": position,
+                "candidates": json.dumps(candidates, ensure_ascii=False),
+            }
+        )
+    except Exception:
+        return local_final_report(position, candidates, limit)
+    return compact_text(getattr(message, "content", str(message)), limit)
+
+
+def local_interview_recording_summary(transcript: str, candidate: dict[str, Any], limit: int = 500) -> str:
+    text = compact_text(transcript, limit)
+    if not text:
+        return "录音已上传，但当前未识别出可用文字内容。请面试官补充关键问答后保存。"
+    return compact_text(
+        f"{candidate.get('name', '候选人')}面试纪要：{text}。建议重点复核表达逻辑、岗位匹配度和项目细节。",
+        limit,
+    )
+
+
+def summarize_interview_recording(transcript: str, candidate: dict[str, Any], limit: int = 500) -> str:
+    if not (LLM_BASE_URL and LLM_API_KEY and LLM_MODEL):
+        return local_interview_recording_summary(transcript, candidate, limit)
+    try:
+        from langchain_core.prompts import ChatPromptTemplate
+        from langchain_openai import ChatOpenAI
+    except ImportError:
+        return local_interview_recording_summary(transcript, candidate, limit)
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "你是面试纪要助手。请把录音转写/会议纪要精炼成中文面试反馈，保留关键问答、岗位匹配、风险点和建议，不超过500字。",
+            ),
+            (
+                "human",
+                "候选人信息：{candidate}\n录音转写或纪要：{transcript}",
+            ),
+        ]
+    )
+    model = ChatOpenAI(
+        model=LLM_MODEL,
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
+        temperature=0.2,
+    )
+    try:
+        message = (prompt | model).invoke(
+            {
+                "candidate": json.dumps(candidate, ensure_ascii=False),
+                "transcript": transcript,
+            }
+        )
+    except Exception:
+        return local_interview_recording_summary(transcript, candidate, limit)
+    return compact_text(getattr(message, "content", str(message)), limit)
