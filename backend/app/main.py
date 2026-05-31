@@ -2,6 +2,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import re
 import time
 from datetime import date, datetime, timedelta
@@ -22,6 +23,7 @@ from .storage import get_conn, init_db, row_to_dict, to_json
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
+PUBLIC_DEMO = os.getenv("RECRUITMENT_PUBLIC_DEMO", "true").lower() == "true"
 
 app = FastAPI(title="AI Recruitment Demo")
 app.add_middleware(
@@ -203,6 +205,55 @@ def parse_json_form(value: str, default):
         return json.loads(value)
     except json.JSONDecodeError:
         return default
+
+
+def public_candidate_name(candidate_id: int | str | None) -> str:
+    return f"候选人{candidate_id or ''}"
+
+
+def mask_candidate_text(value: str | None, real_name: str, public_name: str) -> str:
+    if not value:
+        return value or ""
+    return value.replace(real_name, public_name) if real_name else value
+
+
+def sanitize_application_data(data: dict) -> dict:
+    sanitized = json.loads(json.dumps(data or {}, ensure_ascii=False))
+    application = sanitized.get("application")
+    if isinstance(application, dict):
+        for key in ("name", "english_name", "phone", "email", "id_number"):
+            if application.get(key):
+                application[key] = "已隐藏"
+    return sanitized
+
+
+def public_candidate(item: dict) -> dict:
+    if not PUBLIC_DEMO:
+        return item
+    public_item = dict(item)
+    real_name = str(public_item.get("name") or "")
+    public_name = public_candidate_name(public_item.get("id"))
+    public_item["name"] = public_name
+    public_item["phone_masked"] = "已隐藏"
+    public_item["email_masked"] = "已隐藏"
+    public_item["summary"] = mask_candidate_text(public_item.get("summary"), real_name, public_name)
+    public_item["screening_suggestion"] = mask_candidate_text(public_item.get("screening_suggestion"), real_name, public_name)
+    public_item["application_data"] = sanitize_application_data(public_item.get("application_data") or {})
+    if public_item.get("resume_filename"):
+        public_item["resume_filename"] = "简历已上传（公开演示已隐藏原件）"
+    public_item["resume_path"] = ""
+    public_item["resume_text"] = ""
+    if "interviews" in public_item:
+        public_item["interviews"] = [
+            {
+                **interview,
+                "transcript": mask_candidate_text(interview.get("transcript"), real_name, public_name),
+                "ai_summary": mask_candidate_text(interview.get("ai_summary"), real_name, public_name),
+                "ai_suggestion": mask_candidate_text(interview.get("ai_suggestion"), real_name, public_name),
+            }
+            for interview in public_item.get("interviews", [])
+        ]
+    return public_item
 
 
 def find_job(position: str) -> dict:
@@ -579,7 +630,7 @@ async def create_candidate(candidate: CandidateCreate):
             ),
         )
         row = conn.execute("SELECT * FROM candidates WHERE id = ?", (cursor.lastrowid,)).fetchone()
-        return row_to_dict(row)
+        return public_candidate(row_to_dict(row))
 
 
 @app.get("/api/candidates")
@@ -594,7 +645,7 @@ async def list_candidates(position: Optional[str] = None, status: Optional[str] 
         params.append(status)
     query += " ORDER BY updated_at DESC, id DESC"
     with get_conn() as conn:
-        return [row_to_dict(row) for row in conn.execute(query, params).fetchall()]
+        return [public_candidate(row_to_dict(row)) for row in conn.execute(query, params).fetchall()]
 
 
 @app.get("/api/candidates/{candidate_id}")
@@ -609,11 +660,13 @@ async def get_candidate(candidate_id: int):
         ).fetchall()
         item = row_to_dict(row)
         item["interviews"] = [row_to_dict(interview) for interview in interviews]
-        return item
+        return public_candidate(item)
 
 
 @app.get("/api/candidates/{candidate_id}/resume")
 async def get_candidate_resume(candidate_id: int):
+    if PUBLIC_DEMO:
+        raise HTTPException(status_code=404, detail="resume hidden in public demo")
     with get_conn() as conn:
         row = conn.execute("SELECT resume_filename, resume_path FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
         if not row:
@@ -648,7 +701,7 @@ async def update_candidate(candidate_id: int, payload: dict):
             values,
         )
         row = conn.execute("SELECT * FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
-        return row_to_dict(row)
+        return public_candidate(row_to_dict(row))
 
 
 def next_candidate_status(current: str, total_rounds: int = 3) -> str:
@@ -720,7 +773,7 @@ async def advance_candidate(candidate_id: int, payload: CandidateAdvanceRequest)
             (next_status, candidate_id),
         )
         updated = conn.execute("SELECT * FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
-        item = row_to_dict(updated)
+        item = public_candidate(row_to_dict(updated))
         item["advance_record_id"] = cursor.lastrowid
         return item
 
@@ -855,7 +908,7 @@ async def position_report(position: str):
         ).fetchall()
     candidates = []
     for row in rows:
-        item = row_to_dict(row)
+        item = public_candidate(row_to_dict(row))
         candidates.append(
             {
                 "name": item.get("name"),
@@ -960,7 +1013,7 @@ async def seed_demo_data():
 @app.get("/api/export/candidates")
 async def export_candidates():
     with get_conn() as conn:
-        rows = [row_to_dict(row) for row in conn.execute("SELECT * FROM candidates ORDER BY id").fetchall()]
+        rows = [public_candidate(row_to_dict(row)) for row in conn.execute("SELECT * FROM candidates ORDER BY id").fetchall()]
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)

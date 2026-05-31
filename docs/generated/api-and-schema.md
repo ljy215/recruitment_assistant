@@ -37,7 +37,7 @@
 | 字段 | 说明 |
 | --- | --- |
 | id | 候选人 ID |
-| name | 姓名 |
+| name | 姓名；公开演示环境返回匿名编号 |
 | position | 应聘岗位 |
 | phone_masked | 脱敏手机号 |
 | email_masked | 脱敏邮箱 |
